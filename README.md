@@ -12,8 +12,8 @@
 <p align="center">
   <a href="#quickstart">Quickstart</a> &bull;
   <a href="#features">Features</a> &bull;
-  <a href="#architecture">Architecture</a> &bull;
   <a href="#screenshots">Screenshots</a> &bull;
+  <a href="#architecture">Architecture</a> &bull;
   <a href="#contributing">Contributing</a>
 </p>
 
@@ -44,7 +44,7 @@ You define goals → Agist schedules agents → Agents do the work → You revie
 | Database | SQLite (zero config) | PostgreSQL required | Python deps | None (no persistence) |
 | Dashboard | Web + Mobile PWA | Web only | SaaS only | Terminal TUI |
 | Real-time | WebSocket + SSE | Polling | SaaS | Terminal |
-| Self-hosted | Yes (single binary) | Yes (complex) | Partial | Yes |
+| Self-hosted | Yes | Yes (complex) | Partial | Yes |
 | Multi-company | Yes | Yes | No | No |
 | Cost tracking | Built-in with charts | Text budgets | SaaS | None |
 | Price | Free & open source | Free | $99+/mo | Free |
@@ -57,17 +57,33 @@ You define goals → Agist schedules agents → Agents do the work → You revie
 git clone https://github.com/tahakotil/agist.git
 cd agist
 pnpm install
-
-# Start backend (API + scheduler + WebSocket)
-cd packages/server && npx tsx src/index.ts &
-
-# Start frontend (dashboard)
-cd packages/web && npx next dev -p 3004
+pnpm dev
 ```
 
 Open **http://localhost:3004** — that's it.
 
+This starts both the API server (`:4400`) and the dashboard (`:3004`) with a single command.
+
 > **Requirements:** Node.js 20+, pnpm 9+
+
+---
+
+## Screenshots
+
+<p align="center">
+  <img src="assets/screenshot-dashboard.png" alt="Dashboard" width="100%" />
+  <br/><sub>Dashboard — Real-time overview with stat cards, cost chart, and agent fleet</sub>
+</p>
+
+<p align="center">
+  <img src="assets/screenshot-companies.png" alt="Companies" width="100%" />
+  <br/><sub>Companies — Multi-company management with agent counts and budgets</sub>
+</p>
+
+<p align="center">
+  <img src="assets/screenshot-agents.png" alt="Agents" width="100%" />
+  <br/><sub>Agents — Model routing (Haiku/Sonnet/Opus), status, and schedule overview</sub>
+</p>
 
 ---
 
@@ -302,6 +318,6 @@ MIT - see [LICENSE](LICENSE).
 ---
 
 <p align="center">
-  Built by <a href="https://kotivon.com">Kotivon</a><br/>
+  Built by <a href="https://github.com/tahakotil">Taha Kotil</a><br/>
   <sub>AI agent orchestration for everyone.</sub>
 </p>

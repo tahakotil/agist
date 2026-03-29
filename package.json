@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"pnpm --filter @agent-platform/server dev\" \"pnpm --filter @agent-platform/web dev\"",
+    "dev": "concurrently -n server,web -c blue,green \"cd packages/server && npx tsx src/index.ts\" \"cd packages/web && npx next dev -p 3004\"",
     "build": "pnpm -r build",
     "start": "node packages/server/dist/index.js"
   },
