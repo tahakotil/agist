@@ -10,9 +10,10 @@ export type AgentRole =
   | "research"
   | "sales"
   | "general";
-export type RunStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+export type RunStatus = "queued" | "running" | "completed" | "failed" | "timeout" | "cancelled";
 export type IssuePriority = "critical" | "high" | "medium" | "low";
-export type IssueStatus = "backlog" | "todo" | "in_progress" | "in_review" | "done";
+export type IssueStatus = "open" | "in_progress" | "resolved" | "closed" | "wont_fix";
+export type RoutineStatus = "active" | "paused";
 
 export interface Company {
   id: string;
@@ -37,6 +38,7 @@ export interface Agent {
   reportsTo: string | null;
   adapterType: string;
   adapterConfig: Record<string, unknown>;
+  workingDirectory?: string | null; // absolute path to project directory
   budgetMonthlyCents: number;
   spentMonthlyCents: number;
   createdAt: string;

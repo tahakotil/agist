@@ -362,8 +362,8 @@ describe('CreateRunSchema', () => {
 
 describe('UpdateRunStatusSchema', () => {
   it('accepts minimal valid input', () => {
-    const result = UpdateRunStatusSchema.parse({ status: 'succeeded' })
-    expect(result.status).toBe('succeeded')
+    const result = UpdateRunStatusSchema.parse({ status: 'completed' })
+    expect(result.status).toBe('completed')
   })
 
   it('accepts full input', () => {
@@ -388,7 +388,7 @@ describe('UpdateRunStatusSchema', () => {
 
   it('rejects negative tokenInput', () => {
     expect(() =>
-      UpdateRunStatusSchema.parse({ status: 'succeeded', tokenInput: -1 })
+      UpdateRunStatusSchema.parse({ status: 'completed', tokenInput: -1 })
     ).toThrow()
   })
 
@@ -400,7 +400,7 @@ describe('UpdateRunStatusSchema', () => {
 
   it('rejects logExcerpt over 10000 chars', () => {
     expect(() =>
-      UpdateRunStatusSchema.parse({ status: 'succeeded', logExcerpt: 'l'.repeat(10001) })
+      UpdateRunStatusSchema.parse({ status: 'completed', logExcerpt: 'l'.repeat(10001) })
     ).toThrow()
   })
 })
@@ -416,7 +416,7 @@ describe('CreateIssueSchema', () => {
   it('accepts minimal valid input', () => {
     const result = CreateIssueSchema.parse(base)
     expect(result.title).toBe('Bug found')
-    expect(result.status).toBe('backlog')
+    expect(result.status).toBe('open')
     expect(result.priority).toBe('medium')
   })
 
@@ -451,7 +451,7 @@ describe('CreateIssueSchema', () => {
   })
 
   it('rejects invalid status', () => {
-    expect(() => CreateIssueSchema.parse({ ...base, status: 'closed' as any })).toThrow()
+    expect(() => CreateIssueSchema.parse({ ...base, status: 'backlog' as any })).toThrow()
   })
 
   it('rejects description over 10000 chars', () => {
@@ -469,8 +469,8 @@ describe('UpdateIssueSchema', () => {
   })
 
   it('accepts status change', () => {
-    const result = UpdateIssueSchema.parse({ status: 'done' })
-    expect(result.status).toBe('done')
+    const result = UpdateIssueSchema.parse({ status: 'resolved' })
+    expect(result.status).toBe('resolved')
   })
 
   it('accepts priority change', () => {
@@ -490,12 +490,12 @@ describe('UpdateIssueSchema', () => {
 // ─── Enum schemas (boundary tests) ───────────────────────────────────────────
 
 describe('RunStatusSchema', () => {
-  const statuses = ['queued', 'running', 'succeeded', 'failed', 'cancelled']
+  const statuses = ['queued', 'running', 'completed', 'failed', 'timeout', 'cancelled']
   it.each(statuses)('accepts "%s"', (s) => {
     expect(RunStatusSchema.parse(s)).toBe(s)
   })
   it('rejects unknown status', () => {
-    expect(() => RunStatusSchema.parse('done')).toThrow()
+    expect(() => RunStatusSchema.parse('succeeded')).toThrow()
   })
 })
 
@@ -520,11 +520,11 @@ describe('IssuePrioritySchema', () => {
 })
 
 describe('IssueStatusSchema', () => {
-  it.each(['backlog', 'todo', 'in_progress', 'in_review', 'done'])('accepts "%s"', (s) => {
+  it.each(['open', 'in_progress', 'resolved', 'closed', 'wont_fix'])('accepts "%s"', (s) => {
     expect(IssueStatusSchema.parse(s)).toBe(s)
   })
   it('rejects invalid status', () => {
-    expect(() => IssueStatusSchema.parse('closed')).toThrow()
+    expect(() => IssueStatusSchema.parse('backlog')).toThrow()
   })
 })
 

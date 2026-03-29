@@ -40,7 +40,7 @@ function createStatsHandler(getRow: GetRow) {
 
       const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
       const runStats = getRow(
-        `SELECT COUNT(*) as total, SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success FROM runs WHERE created_at > ?`,
+        `SELECT COUNT(*) as total, SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as success FROM runs WHERE created_at > ?`,
         [since24h]
       ) as { total: number; success: number } | undefined
 

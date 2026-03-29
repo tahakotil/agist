@@ -327,22 +327,22 @@ describe('buildCliArgs', () => {
 // ─── Mock child_process spawn behavior ───────────────────────────────────────
 
 describe('spawn process behavior simulation', () => {
-  it('simulates successful process exit (code 0 = success)', () => {
+  it('simulates successful process exit (code 0 = completed)', () => {
     const exitCode = 0
-    const status = exitCode === 0 ? 'success' : 'failed'
-    expect(status).toBe('success')
+    const status = exitCode === 0 ? 'completed' : 'failed'
+    expect(status).toBe('completed')
   })
 
   it('simulates failed process exit (non-zero = failed)', () => {
     const exitCode: number = 1
-    const status = exitCode === 0 ? 'success' : 'failed'
+    const status = exitCode === 0 ? 'completed' : 'failed'
     expect(status).toBe('failed')
   })
 
   it('simulates null exit code (process killed = -1)', () => {
     const rawCode: number | null = null
     const exitCode: number = rawCode ?? -1
-    const status = exitCode === 0 ? 'success' : 'failed'
+    const status = exitCode === 0 ? 'completed' : 'failed'
     expect(exitCode).toBe(-1)
     expect(status).toBe('failed')
   })

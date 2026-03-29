@@ -173,6 +173,46 @@ export async function spawnClaudeLocal(
   // Build skill directory for --add-dir
   const skillDir = buildSkillDir(ctx);
 
+  // Validate working directory exists before proceeding
+  if (workingDirectory) {
+    try {
+      await access(workingDirectory);
+    } catch {
+      const finishedAt = new Date().toISOString();
+      const errorMsg = `Working directory not found: ${workingDirectory}`;
+
+      run(
+        `UPDATE runs SET status = 'failed', started_at = ?, exit_code = ?, error = ?,
+         token_input = 0, token_output = 0, cost_cents = 0, log_excerpt = ?,
+         finished_at = ? WHERE id = ?`,
+        [now, -1, errorMsg, errorMsg, finishedAt, runId]
+      );
+
+      run(
+        `UPDATE agents SET status = 'idle', updated_at = ? WHERE id = ?`,
+        [finishedAt, agentId]
+      );
+
+      broadcast({
+        type: 'run.completed',
+        data: { runId, agentId, companyId, status: 'failed', error: errorMsg },
+      });
+
+      pushToAgent(agentId, {
+        type: 'log',
+        runId,
+        line: `[error] ${errorMsg}`,
+        timestamp: finishedAt,
+      });
+
+      pushToAgent(agentId, { type: 'status', agentId, status: 'idle', runId });
+
+      try { rmSync(skillDir, { recursive: true, force: true }); } catch { /* ignore */ }
+
+      return;
+    }
+  }
+
   // Mark run as running
   run(
     `UPDATE runs SET status = 'running', started_at = ? WHERE id = ?`,
@@ -202,6 +242,7 @@ export async function spawnClaudeLocal(
 
   const child = spawn('claude', args, {
     stdio: ['ignore', 'pipe', 'pipe'],
+    cwd: workingDirectory || process.cwd(),
     env: { ...process.env },
   });
 

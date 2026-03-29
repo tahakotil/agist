@@ -198,15 +198,15 @@ describe('Companies CRUD', () => {
 
   // ── STATUS FIELD ─────────────────────────────────────────────────────────────
 
-  it('POST /api/companies with status=inactive → 201', async () => {
+  it('POST /api/companies with status=paused → 201', async () => {
     const res = await app.request('/api/companies', {
       method: 'POST',
-      body: JSON.stringify({ name: 'Inactive Corp', status: 'inactive' }),
+      body: JSON.stringify({ name: 'Paused Corp', status: 'paused' }),
       headers: { 'Content-Type': 'application/json' },
     });
     expect(res.status).toBe(201);
     const body = await json(res);
-    expect((body.company as Record<string, unknown>).status).toBe('inactive');
+    expect((body.company as Record<string, unknown>).status).toBe('paused');
   });
 
   it('PATCH /api/companies/:id status update → 200', async () => {
@@ -220,10 +220,10 @@ describe('Companies CRUD', () => {
 
     const res = await app.request(`/api/companies/${id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ status: 'suspended' }),
+      body: JSON.stringify({ status: 'archived' }),
       headers: { 'Content-Type': 'application/json' },
     });
     expect(res.status).toBe(200);
-    expect((await json(res)).company as unknown as Record<string, unknown>).toMatchObject({ status: 'suspended' });
+    expect((await json(res)).company as unknown as Record<string, unknown>).toMatchObject({ status: 'archived' });
   });
 });

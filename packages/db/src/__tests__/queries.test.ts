@@ -441,7 +441,7 @@ describe('Run queries', () => {
     const q = makeRunQueries(db)
     const run = q.create(baseRun())
     const updated = q.updateStatus(run.id, {
-      status: 'succeeded',
+      status: 'completed',
       finishedAt: '2024-01-01T00:00:00.000Z',
       exitCode: 0,
       tokenInput: 1000,
@@ -449,7 +449,7 @@ describe('Run queries', () => {
       costCents: 5,
       logExcerpt: 'done',
     })
-    expect(updated!.status).toBe('succeeded')
+    expect(updated!.status).toBe('completed')
     expect(updated!.exitCode).toBe(0)
     expect(updated!.tokenInput).toBe(1000)
     expect(updated!.tokenOutput).toBe(500)
@@ -471,7 +471,7 @@ describe('Run queries', () => {
 
   it('returns undefined when updating nonexistent run', () => {
     const q = makeRunQueries(db)
-    expect(q.updateStatus('nope', { status: 'succeeded' })).toBeUndefined()
+    expect(q.updateStatus('nope', { status: 'completed' })).toBeUndefined()
   })
 
   it('gets latest run by agent', () => {
@@ -542,7 +542,7 @@ describe('Issue queries', () => {
   const baseIssue = () => ({
     companyId,
     title: 'Fix login bug',
-    status: 'backlog' as const,
+    status: 'open' as const,
     priority: 'medium' as const,
   })
 
@@ -551,7 +551,7 @@ describe('Issue queries', () => {
     const issue = q.create(baseIssue())
     expect(issue.id).toBeTruthy()
     expect(issue.title).toBe('Fix login bug')
-    expect(issue.status).toBe('backlog')
+    expect(issue.status).toBe('open')
     expect(issue.priority).toBe('medium')
     expect(issue.projectId).toBeNull()
     expect(issue.agentId).toBeNull()
@@ -585,7 +585,7 @@ describe('Issue queries', () => {
     const q = makeIssueQueries(db)
     const other = cq.create({ name: 'Other', status: 'active', budgetMonthlyCents: 0 })
     q.create(baseIssue())
-    q.create({ companyId: other.id, title: 'Other issue', status: 'backlog', priority: 'low' })
+    q.create({ companyId: other.id, title: 'Other issue', status: 'open', priority: 'low' })
     expect(q.listByCompany(companyId).length).toBe(1)
   })
 
@@ -600,14 +600,14 @@ describe('Issue queries', () => {
   it('updates an issue', () => {
     const q = makeIssueQueries(db)
     const issue = q.create(baseIssue())
-    const updated = q.update(issue.id, { status: 'done', priority: 'high' })
-    expect(updated!.status).toBe('done')
+    const updated = q.update(issue.id, { status: 'resolved', priority: 'high' })
+    expect(updated!.status).toBe('resolved')
     expect(updated!.priority).toBe('high')
   })
 
   it('returns undefined when updating nonexistent issue', () => {
     const q = makeIssueQueries(db)
-    expect(q.update('nope', { status: 'done' })).toBeUndefined()
+    expect(q.update('nope', { status: 'resolved' })).toBeUndefined()
   })
 
   it('returns unchanged issue when no update fields', () => {

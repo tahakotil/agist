@@ -26,6 +26,7 @@ import {
   CheckCircle,
   XCircle,
   Timer,
+  FolderOpen,
 } from "lucide-react"
 import Link from "next/link"
 import { toast } from "sonner"
@@ -58,11 +59,12 @@ const STATUS_BADGE: Record<string, string> = {
 }
 
 const RUN_STATUS_BADGE: Record<string, string> = {
-  success: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
-  error: "bg-red-500/15 text-red-400 border-red-500/30",
+  completed: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+  failed: "bg-red-500/15 text-red-400 border-red-500/30",
   running: "bg-blue-500/15 text-blue-400 border-blue-500/30",
   queued: "bg-slate-500/15 text-slate-400 border-slate-500/30",
   cancelled: "bg-slate-500/15 text-slate-400 border-slate-500/30",
+  timeout: "bg-orange-500/15 text-orange-400 border-orange-500/30",
 }
 
 function modelShortLabel(model: string): string {
@@ -284,6 +286,28 @@ export default function AgentDetailPage({ params }: PageProps) {
         </Card>
       </div>
 
+      {agent.workingDirectory ? (
+        <Card className="bg-slate-900 border-slate-800">
+          <CardContent className="p-4">
+            <p className="text-xs text-slate-500 flex items-center gap-1.5 mb-2">
+              <FolderOpen className="h-3.5 w-3.5" />
+              Working Directory
+            </p>
+            <code className="text-sm font-mono text-emerald-400 break-all">{agent.workingDirectory}</code>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="bg-slate-900 border-slate-800 border-dashed">
+          <CardContent className="p-4">
+            <p className="text-xs text-slate-500 flex items-center gap-1.5 mb-1">
+              <FolderOpen className="h-3.5 w-3.5" />
+              Working Directory
+            </p>
+            <p className="text-xs text-slate-600">Not set — Claude CLI will run from the server process directory.</p>
+          </CardContent>
+        </Card>
+      )}
+
       <section>
         <h2 className="text-lg font-semibold text-slate-100 mb-4">Live Logs</h2>
         <LogViewer agentId={id} height="380px" />
@@ -297,9 +321,9 @@ export default function AgentDetailPage({ params }: PageProps) {
               <Link key={run.id} href={`/runs/${run.id}`}>
                 <div className="flex items-center gap-4 p-3 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 transition-all hover:-translate-y-0.5 hover:shadow-md group">
                   <div className="flex-shrink-0">
-                    {run.status === "success" ? (
+                    {run.status === "completed" ? (
                       <CheckCircle className="h-4 w-4 text-emerald-400" />
-                    ) : run.status === "error" ? (
+                    ) : run.status === "failed" ? (
                       <XCircle className="h-4 w-4 text-red-400" />
                     ) : run.status === "running" ? (
                       <Play className="h-4 w-4 text-blue-400 animate-pulse" />

@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS agents (
   reports_to           TEXT    REFERENCES agents (id) ON DELETE SET NULL,
   adapter_type         TEXT    NOT NULL,
   adapter_config       TEXT    NOT NULL DEFAULT '{}',
+  working_directory    TEXT,
   budget_monthly_cents INTEGER NOT NULL DEFAULT 0,
   spent_monthly_cents  INTEGER NOT NULL DEFAULT 0,
   created_at           TEXT    NOT NULL,
@@ -78,7 +79,7 @@ CREATE TABLE IF NOT EXISTS runs (
   company_id   TEXT    NOT NULL REFERENCES companies (id) ON DELETE CASCADE,
   routine_id   TEXT    REFERENCES routines (id) ON DELETE SET NULL,
   status       TEXT    NOT NULL DEFAULT 'queued'
-                 CHECK (status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')),
+                 CHECK (status IN ('queued', 'running', 'completed', 'failed', 'timeout', 'cancelled')),
   model        TEXT,
   source       TEXT    NOT NULL
                  CHECK (source IN ('schedule', 'manual', 'event')),
@@ -108,8 +109,8 @@ CREATE TABLE IF NOT EXISTS issues (
   agent_id    TEXT REFERENCES agents (id) ON DELETE SET NULL,
   title       TEXT NOT NULL,
   description TEXT,
-  status      TEXT NOT NULL DEFAULT 'backlog'
-                CHECK (status IN ('backlog', 'todo', 'in_progress', 'in_review', 'done')),
+  status      TEXT NOT NULL DEFAULT 'open'
+                CHECK (status IN ('open', 'in_progress', 'resolved', 'closed', 'wont_fix')),
   priority    TEXT NOT NULL DEFAULT 'medium'
                 CHECK (priority IN ('critical', 'high', 'medium', 'low')),
   created_at  TEXT NOT NULL,

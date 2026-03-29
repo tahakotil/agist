@@ -128,9 +128,9 @@ describe('Dashboard Stats', () => {
 
     // Insert 4 runs in last 24h: 3 success, 1 failed
     const recentTs = new Date(Date.now() - 60 * 60 * 1000).toISOString(); // 1 hour ago
-    insertRun(agentId, companyId, 'success', 0, recentTs);
-    insertRun(agentId, companyId, 'success', 0, recentTs);
-    insertRun(agentId, companyId, 'success', 0, recentTs);
+    insertRun(agentId, companyId, 'completed', 0, recentTs);
+    insertRun(agentId, companyId, 'completed', 0, recentTs);
+    insertRun(agentId, companyId, 'completed', 0, recentTs);
     insertRun(agentId, companyId, 'failed', 0, recentTs);
 
     const res = await app.request('/api/dashboard/stats');
@@ -179,8 +179,8 @@ describe('Dashboard Stats', () => {
     const agentId = ((await json(agentRes)).agent as Record<string, unknown>).id as string;
 
     const todayTs = new Date().toISOString();
-    insertRun(agentId, companyId, 'success', 150, todayTs); // $1.50
-    insertRun(agentId, companyId, 'success', 200, todayTs); // $2.00
+    insertRun(agentId, companyId, 'completed', 150, todayTs); // $1.50
+    insertRun(agentId, companyId, 'completed', 200, todayTs); // $2.00
 
     const res = await app.request('/api/dashboard/stats');
     const body = await json(res);

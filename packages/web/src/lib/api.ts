@@ -12,7 +12,7 @@ export async function api<T>(path: string, options?: RequestInit): Promise<T> {
 // ─── Types matching actual backend shapes ─────────────────────────────────────
 
 export type AgentStatus = "idle" | "running" | "error" | "paused";
-export type RunStatus = "success" | "error" | "running" | "cancelled" | "queued";
+export type RunStatus = "completed" | "failed" | "running" | "cancelled" | "queued" | "timeout";
 
 export interface Company {
   id: string;
@@ -39,6 +39,7 @@ export interface Agent {
   reportsTo: string | null;
   adapterType: string;
   adapterConfig: Record<string, unknown>;
+  workingDirectory?: string | null;
   budgetMonthlyCents: number;
   spentMonthlyCents: number;
   createdAt: string;
@@ -161,6 +162,7 @@ export async function createAgent(
     role?: string;
     title?: string;
     model?: string;
+    workingDirectory?: string | null;
   }
 ): Promise<Agent> {
   const res = await api<{ agent: Agent }>(`/companies/${companyId}/agents`, {
@@ -172,7 +174,7 @@ export async function createAgent(
 
 export async function updateAgent(
   id: string,
-  data: Partial<{ name: string; role: string; title: string; model: string; status: AgentStatus }>
+  data: Partial<{ name: string; role: string; title: string; model: string; status: AgentStatus; workingDirectory: string | null }>
 ): Promise<Agent> {
   const res = await api<{ agent: Agent }>(`/agents/${id}`, {
     method: "PATCH",

@@ -16,15 +16,17 @@ import { CheckCircle, XCircle, Play, Ban } from "lucide-react"
 import Link from "next/link"
 
 const RUN_STATUS_BADGE: Record<string, string> = {
-  success: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
-  error: "bg-red-500/15 text-red-400 border-red-500/30",
+  completed: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+  failed: "bg-red-500/15 text-red-400 border-red-500/30",
   running: "bg-blue-500/15 text-blue-400 border-blue-500/30",
+  queued: "bg-slate-500/15 text-slate-400 border-slate-500/30",
   cancelled: "bg-slate-500/15 text-slate-400 border-slate-500/30",
+  timeout: "bg-orange-500/15 text-orange-400 border-orange-500/30",
 }
 
 const STATUS_ICON: Record<string, React.ReactNode> = {
-  success: <CheckCircle className="h-4 w-4 text-emerald-400" />,
-  error: <XCircle className="h-4 w-4 text-red-400" />,
+  completed: <CheckCircle className="h-4 w-4 text-emerald-400" />,
+  failed: <XCircle className="h-4 w-4 text-red-400" />,
   running: <Play className="h-4 w-4 text-blue-400 animate-pulse" />,
   cancelled: <Ban className="h-4 w-4 text-slate-500" />,
 }

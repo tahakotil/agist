@@ -61,8 +61,8 @@ async function seed() {
   );
 
   run(
-    `INSERT INTO agents (id, company_id, name, role, title, model, capabilities, status, reports_to, adapter_type, adapter_config, budget_monthly_cents, spent_monthly_cents, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO agents (id, company_id, name, role, title, model, capabilities, status, reports_to, adapter_type, adapter_config, working_directory, budget_monthly_cents, spent_monthly_cents, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       builderId,
       companyId,
@@ -75,6 +75,7 @@ async function seed() {
       null,
       'claude_local',
       '{}',
+      '/tmp/agist-demo-project',
       0,
       0,
       now.toISOString(),
@@ -83,8 +84,8 @@ async function seed() {
   );
 
   run(
-    `INSERT INTO agents (id, company_id, name, role, title, model, capabilities, status, reports_to, adapter_type, adapter_config, budget_monthly_cents, spent_monthly_cents, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO agents (id, company_id, name, role, title, model, capabilities, status, reports_to, adapter_type, adapter_config, working_directory, budget_monthly_cents, spent_monthly_cents, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       reviewerId,
       companyId,
@@ -97,6 +98,7 @@ async function seed() {
       builderId,
       'claude_local',
       '{}',
+      '/tmp/agist-demo-project',
       0,
       0,
       now.toISOString(),
@@ -182,7 +184,7 @@ async function seed() {
       watchdogId,
       companyId,
       routine1Id,
-      'succeeded',
+      'completed',
       'claude-haiku-4-5-20251001',
       'scheduled',
       run1StartedAt.toISOString(),
@@ -208,7 +210,7 @@ async function seed() {
       watchdogId,
       companyId,
       routine1Id,
-      'succeeded',
+      'completed',
       'claude-haiku-4-5-20251001',
       'scheduled',
       run2StartedAt.toISOString(),
@@ -234,7 +236,7 @@ async function seed() {
       watchdogId,
       companyId,
       routine1Id,
-      'succeeded',
+      'completed',
       'claude-haiku-4-5-20251001',
       'scheduled',
       run3StartedAt.toISOString(),
@@ -260,7 +262,7 @@ async function seed() {
       builderId,
       companyId,
       routine2Id,
-      'succeeded',
+      'completed',
       'claude-sonnet-4-6',
       'scheduled',
       run4StartedAt.toISOString(),
@@ -313,7 +315,7 @@ async function seed() {
       watchdogId,
       'Memory usage high on staging',
       'Watchdog detected elevated memory usage on the staging server. Needs investigation.',
-      'todo',
+      'open',
       'high',
       now.toISOString(),
       now.toISOString(),
