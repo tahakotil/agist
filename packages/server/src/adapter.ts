@@ -1,5 +1,8 @@
 import { spawn } from 'child_process';
-import { run } from './db.js';
+import { mkdirSync, writeFileSync, rmSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
+import { run, get } from './db.js';
 import { pushToAgent } from './ws.js';
 import { broadcast } from './sse.js';
 
@@ -10,6 +13,77 @@ export interface RunAdapterOptions {
   model: string;
   prompt: string;
   adapterConfig?: Record<string, unknown>;
+}
+
+interface AgentContext {
+  agentName: string;
+  agentTitle: string | null;
+  agentRole: string;
+  capabilities: string | null;
+  companyName: string;
+  companyDescription: string | null;
+  routineTitle: string | null;
+  routineDescription: string | null;
+}
+
+function buildSystemPrompt(ctx: AgentContext, taskPrompt: string): string {
+  const lines: string[] = [];
+
+  lines.push(`# Agent Identity`);
+  lines.push(`You are "${ctx.agentName}", a ${ctx.agentRole} agent${ctx.agentTitle ? ` (${ctx.agentTitle})` : ''}.`);
+  lines.push(`Company: ${ctx.companyName}${ctx.companyDescription ? ` — ${ctx.companyDescription}` : ''}`);
+
+  if (ctx.capabilities) {
+    lines.push('');
+    lines.push(`## Capabilities`);
+    lines.push(ctx.capabilities);
+  }
+
+  if (ctx.routineTitle || ctx.routineDescription) {
+    lines.push('');
+    lines.push(`## Current Task: ${ctx.routineTitle || 'Manual wake'}`);
+    if (ctx.routineDescription) {
+      lines.push(ctx.routineDescription);
+    }
+  }
+
+  lines.push('');
+  lines.push(`## Instructions`);
+  lines.push(taskPrompt);
+
+  lines.push('');
+  lines.push(`## Output Rules`);
+  lines.push(`- Be concise and action-oriented`);
+  lines.push(`- Lead with findings or actions taken, not preamble`);
+  lines.push(`- If nothing changed since last run, say "STATUS: NO_CHANGE" with reason`);
+  lines.push(`- Always include evidence (data, commands run, results) not just conclusions`);
+
+  return lines.join('\n');
+}
+
+function buildSkillDir(ctx: AgentContext): string {
+  const base = join(tmpdir(), `agist-skills-${Date.now()}`);
+  const skillDir = join(base, '.claude', 'skills');
+  mkdirSync(skillDir, { recursive: true });
+
+  // Write agent identity skill
+  const skillContent = `---
+name: ${ctx.agentName}
+description: Agent identity and context for ${ctx.agentName}
+---
+
+# ${ctx.agentName}
+${ctx.agentTitle ? `**Title:** ${ctx.agentTitle}` : ''}
+**Role:** ${ctx.agentRole}
+**Company:** ${ctx.companyName}${ctx.companyDescription ? ` — ${ctx.companyDescription}` : ''}
+
+${ctx.capabilities ? `## Capabilities\n${ctx.capabilities}` : ''}
+
+${ctx.routineTitle ? `## Current Routine: ${ctx.routineTitle}\n${ctx.routineDescription || ''}` : ''}
+`;
+
+  writeFileSync(join(skillDir, 'SKILL.md'), skillContent, 'utf-8');
+  return base;
 }
 
 interface StreamJsonChunk {
@@ -68,6 +142,35 @@ export async function spawnClaudeLocal(
 
   const now = new Date().toISOString();
 
+  // Fetch agent + company context from DB
+  const agentRow = get<Record<string, unknown>>(
+    `SELECT a.name, a.title, a.role, a.capabilities, c.name as company_name, c.description as company_desc
+     FROM agents a JOIN companies c ON a.company_id = c.id WHERE a.id = ?`, [agentId]
+  );
+
+  // Fetch routine context if this run came from a routine
+  const routineRow = get<Record<string, unknown>>(
+    `SELECT r.title, r.description FROM routines r
+     JOIN runs ru ON ru.routine_id = r.id WHERE ru.id = ?`, [runId]
+  );
+
+  const ctx: AgentContext = {
+    agentName: (agentRow?.name as string) || 'unknown-agent',
+    agentTitle: (agentRow?.title as string) || null,
+    agentRole: (agentRow?.role as string) || 'general',
+    capabilities: (agentRow?.capabilities as string) || null,
+    companyName: (agentRow?.company_name as string) || 'Unknown Company',
+    companyDescription: (agentRow?.company_desc as string) || null,
+    routineTitle: (routineRow?.title as string) || null,
+    routineDescription: (routineRow?.description as string) || null,
+  };
+
+  // Build enriched system prompt
+  const systemPrompt = buildSystemPrompt(ctx, prompt);
+
+  // Build skill directory for --add-dir
+  const skillDir = buildSkillDir(ctx);
+
   // Mark run as running
   run(
     `UPDATE runs SET status = 'running', started_at = ? WHERE id = ?`,
@@ -91,7 +194,8 @@ export async function spawnClaudeLocal(
     '--print',
     '--verbose',
     '--output-format', 'stream-json',
-    '-p', prompt,
+    '--add-dir', skillDir,
+    '-p', systemPrompt,
   ];
 
   const child = spawn('claude', args, {
@@ -176,6 +280,9 @@ export async function spawnClaudeLocal(
         ]
       );
 
+      // Cleanup temp skill directory
+      try { rmSync(skillDir, { recursive: true, force: true }); } catch { /* ignore */ }
+
       const agentStatus = 'idle';
       run(
         `UPDATE agents SET status = ?, updated_at = ? WHERE id = ?`,
@@ -216,6 +323,9 @@ export async function spawnClaudeLocal(
     child.on('error', (err) => {
       const finishedAt = new Date().toISOString();
       const errorMsg = `Failed to spawn claude CLI: ${err.message}`;
+
+      // Cleanup temp skill directory
+      try { rmSync(skillDir, { recursive: true, force: true }); } catch { /* ignore */ }
 
       run(
         `UPDATE runs SET status = ?, started_at = ?, exit_code = ?, error = ?,
