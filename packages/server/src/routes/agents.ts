@@ -255,6 +255,10 @@ const wakeSchema = z.object({
   prompt: z.string().optional(),
 });
 
+// In-memory rate limit: agentId -> last wake timestamp (ms)
+const wakeRateLimit = new Map<string, number>();
+const WAKE_COOLDOWN_MS = 10_000; // 10 seconds
+
 // POST /api/agents/:id/wake — manual trigger
 agentsRouter.post('/api/agents/:id/wake', async (c) => {
   const id = c.req.param('id');
@@ -268,6 +272,18 @@ agentsRouter.post('/api/agents/:id/wake', async (c) => {
   if (agent.status === 'running') {
     return c.json({ error: 'Agent is already running' }, 409);
   }
+
+  // Rate limit: prevent re-waking within 10 seconds
+  const lastWake = wakeRateLimit.get(id);
+  const now_ms = Date.now();
+  if (lastWake !== undefined && now_ms - lastWake < WAKE_COOLDOWN_MS) {
+    const retryAfter = Math.ceil((WAKE_COOLDOWN_MS - (now_ms - lastWake)) / 1000);
+    return c.json(
+      { error: 'Rate limit: agent was just woken. Please wait before waking again.', retryAfterSeconds: retryAfter },
+      429
+    );
+  }
+  wakeRateLimit.set(id, now_ms);
 
   // Parse optional body (may be empty)
   let bodyPrompt: string | undefined;

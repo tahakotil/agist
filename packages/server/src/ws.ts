@@ -137,3 +137,17 @@ export function handleUpgrade(
     wss.emit('connection', ws, request);
   });
 }
+
+export function closeAllConnections(): void {
+  if (!wss) return;
+  for (const ws of wss.clients) {
+    try {
+      ws.terminate();
+    } catch {
+      // Already closed
+    }
+  }
+  agentSubscriptions.clear();
+  clientSubscriptions.clear();
+  console.log('[ws] All WebSocket connections closed.');
+}

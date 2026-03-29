@@ -252,8 +252,58 @@ export async function spawnClaudeLocal(
     });
   });
 
+  // 5-minute timeout to prevent zombie processes
+  const TIMEOUT_MS = 5 * 60 * 1000;
+
   await new Promise<void>((resolve) => {
+    let settled = false;
+
+    // Timeout guard: kill process after 5 minutes
+    const timeoutHandle = setTimeout(() => {
+      if (settled) return;
+      console.error(`[adapter] Run ${runId} timed out after 5 minutes — killing process`);
+      try {
+        child.kill('SIGKILL');
+      } catch {
+        // Already dead
+      }
+
+      const finishedAt = new Date().toISOString();
+      const costCents = estimateCostCents(model, inputTokens, outputTokens);
+      const logExcerpt = logLines.slice(-200).join('\n');
+
+      try { rmSync(skillDir, { recursive: true, force: true }); } catch { /* ignore */ }
+
+      run(
+        `UPDATE runs SET status = 'timeout', started_at = ?, exit_code = ?, error = ?,
+         token_input = ?, token_output = ?, cost_cents = ?, log_excerpt = ?,
+         finished_at = ? WHERE id = ?`,
+        [now, -1, 'Process timed out after 5 minutes', inputTokens, outputTokens,
+         costCents, logExcerpt, finishedAt, runId]
+      );
+
+      run(`UPDATE agents SET status = 'idle', updated_at = ? WHERE id = ?`, [finishedAt, agentId]);
+      run(
+        `UPDATE companies SET spent_monthly_cents = spent_monthly_cents + ?, updated_at = ? WHERE id = ?`,
+        [costCents, finishedAt, companyId]
+      );
+      run(
+        `UPDATE agents SET spent_monthly_cents = spent_monthly_cents + ?, updated_at = ? WHERE id = ?`,
+        [costCents, finishedAt, agentId]
+      );
+
+      broadcast({ type: 'run.completed', data: { runId, agentId, companyId, status: 'timeout' } });
+      pushToAgent(agentId, { type: 'status', agentId, status: 'idle', runId });
+
+      settled = true;
+      resolve();
+    }, TIMEOUT_MS);
+
     child.on('close', (code) => {
+      clearTimeout(timeoutHandle);
+      if (settled) return;
+      settled = true;
+
       const finishedAt = new Date().toISOString();
       const exitCode = code ?? -1;
       const status = exitCode === 0 ? 'success' : 'failed';
@@ -321,6 +371,10 @@ export async function spawnClaudeLocal(
     });
 
     child.on('error', (err) => {
+      clearTimeout(timeoutHandle);
+      if (settled) return;
+      settled = true;
+
       const finishedAt = new Date().toISOString();
       const errorMsg = `Failed to spawn claude CLI: ${err.message}`;
 

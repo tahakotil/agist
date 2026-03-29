@@ -8,8 +8,9 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import type { IncomingMessage } from 'http';
 import type { Duplex } from 'stream';
+import { ZodError } from 'zod';
 
-import { initDb } from './db.js';
+import { initDb, saveDb } from './db.js';
 import { healthRouter } from './routes/health.js';
 import { companiesRouter } from './routes/companies.js';
 import { agentsRouter } from './routes/agents.js';
@@ -17,8 +18,8 @@ import { routinesRouter } from './routes/routines.js';
 import { runsRouter } from './routes/runs.js';
 import { issuesRouter } from './routes/issues.js';
 import { sseRouter } from './sse.js';
-import { initWebSocketServer, handleUpgrade } from './ws.js';
-import { startScheduler, initializeNextRunAts } from './scheduler.js';
+import { initWebSocketServer, handleUpgrade, closeAllConnections } from './ws.js';
+import { startScheduler, initializeNextRunAts, stopScheduler } from './scheduler.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -69,14 +70,11 @@ if (existsSync(webOutDir)) {
 
 // Global error handler
 app.onError((err, c) => {
-  console.error('[server] Unhandled error:', err);
-  return c.json(
-    {
-      error: 'Internal server error',
-      message: err.message,
-    },
-    500
-  );
+  console.error('[Agist Error]', err.message, err.stack);
+  if (err instanceof ZodError) {
+    return c.json({ error: 'Validation error', details: err.errors }, 400);
+  }
+  return c.json({ error: 'Internal server error' }, 500);
 });
 
 // 404 handler
@@ -120,6 +118,44 @@ async function main() {
       }
     }
   );
+
+  // Graceful shutdown handler
+  async function shutdown(signal: string): Promise<void> {
+    console.log(`[server] Received ${signal} — shutting down gracefully...`);
+
+    // 1. Stop the scheduler (no new runs)
+    stopScheduler();
+
+    // 2. Close all WebSocket connections
+    closeAllConnections();
+
+    // 3. Save DB before exit
+    try {
+      saveDb();
+      console.log('[server] Database saved.');
+    } catch (err) {
+      console.error('[server] Failed to save DB on shutdown:', err);
+    }
+
+    // 4. Close the HTTP server
+    server.close((err) => {
+      if (err) {
+        console.error('[server] HTTP server close error:', err);
+        process.exit(1);
+      }
+      console.log('[server] HTTP server closed. Goodbye.');
+      process.exit(0);
+    });
+
+    // Force exit after 10 seconds if graceful shutdown stalls
+    setTimeout(() => {
+      console.error('[server] Graceful shutdown timed out — forcing exit.');
+      process.exit(1);
+    }, 10_000).unref();
+  }
+
+  process.on('SIGTERM', () => { shutdown('SIGTERM').catch(console.error); });
+  process.on('SIGINT', () => { shutdown('SIGINT').catch(console.error); });
 }
 
 main().catch((err: unknown) => {
