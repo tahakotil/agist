@@ -29,7 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { relativeTime, cn } from "@/lib/utils"
-import { Play, Pause, FileText, Clock, Plus, Bot } from "lucide-react"
+import { Play, Pause, FileText, Plus, Bot } from "lucide-react"
 import Link from "next/link"
 import { toast } from "sonner"
 

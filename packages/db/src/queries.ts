@@ -24,7 +24,8 @@ import type {
 
 function dbAll<T = Record<string, unknown>>(db: Database, sql: string, params: unknown[] = []): T[] {
   const stmt = db.prepare(sql);
-  if (params.length) stmt.bind(params);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if (params.length) stmt.bind(params as any);
   const results: T[] = [];
   while (stmt.step()) {
     results.push(stmt.getAsObject() as T);
@@ -38,7 +39,8 @@ function dbGet<T = Record<string, unknown>>(db: Database, sql: string, params: u
 }
 
 function dbRun(db: Database, sql: string, params: unknown[] = []): number {
-  db.run(sql, params);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db.run(sql, params as any);
   return db.getRowsModified();
 }
 

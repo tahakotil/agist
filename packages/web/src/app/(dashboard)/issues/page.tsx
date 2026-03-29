@@ -50,7 +50,7 @@ export default function IssuesPage() {
   })
 
   const open = issues?.filter((i) => !i.resolvedAt) ?? []
-  const resolved = issues?.filter((i) => !!i.resolvedAt) ?? []
+  const _resolved = issues?.filter((i) => !!i.resolvedAt) ?? []
 
   return (
     <div className="p-6 space-y-6 max-w-[1600px] mx-auto">

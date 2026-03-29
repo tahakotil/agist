@@ -13,7 +13,7 @@ import {
 import { resolve } from "path";
 
 const dbPath = resolve(process.argv[2] ?? "agist.db");
-const db = createDb(dbPath);
+const db = await createDb(dbPath);
 
 const companies = makeCompanyQueries(db);
 const agents = makeAgentQueries(db);
@@ -472,4 +472,5 @@ console.log(`  Agents    : ${allAgents.length}`);
 console.log(`  Routines  : ${allRoutines.length}`);
 console.log(`  Issues    : ${sampleIssues.length}`);
 
-db.close();
+db.close()
+

@@ -7,13 +7,35 @@
     "build": "pnpm -r build",
     "start": "node packages/server/dist/index.js",
     "seed": "pnpm --filter @agist/server exec tsx src/seed.ts",
-    "clean": "rm -rf ~/.agist/data.db"
+    "clean": "rm -rf ~/.agist/data.db",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:integration": "vitest run packages/server/test/",
+    "typecheck": "tsc -p packages/server/tsconfig.json --noEmit && tsc -p packages/shared/tsconfig.json --noEmit && tsc -p packages/db/tsconfig.json --noEmit",
+    "lint": "eslint packages/",
+    "format": "prettier --write 'packages/**/*.{ts,tsx,json}'",
+    "format:check": "prettier --check 'packages/**/*.{ts,tsx,json}'",
+    "test:e2e": "playwright test"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["better-sqlite3", "esbuild", "sharp", "unrs-resolver"]
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild",
+      "sharp",
+      "unrs-resolver"
+    ]
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@typescript-eslint/eslint-plugin": "^8.57.2",
+    "@typescript-eslint/parser": "^8.57.2",
+    "@vitest/coverage-v8": "^4.1.2",
     "concurrently": "^9.1.2",
-    "typescript": "^5.7.3"
+    "eslint": "^9.39.4",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.8.1",
+    "typescript": "^5.7.3",
+    "vitest": "^4.1.2"
   }
 }
