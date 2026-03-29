@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { useState } from "react"
 import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { ApiConnectionError } from "@/lib/api"
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -11,9 +12,17 @@ export function Providers({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            refetchInterval: 5000,
+            refetchInterval: (query) => {
+              // Stop polling if backend is unreachable
+              if (query.state.error instanceof ApiConnectionError) return false
+              return 5000
+            },
             staleTime: 2000,
-            retry: 1,
+            retry: (failureCount, error) => {
+              // Don't retry connection errors — backend is down
+              if (error instanceof ApiConnectionError) return false
+              return failureCount < 1
+            },
           },
         },
       })

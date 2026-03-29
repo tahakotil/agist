@@ -41,17 +41,17 @@ const RUN_STATUS_BADGE: Record<string, string> = {
 export default function DashboardPage() {
   const queryClient = useQueryClient()
 
-  const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
+  const { data: stats, isLoading: statsLoading, isError: statsError } = useQuery<DashboardStats>({
     queryKey: ["dashboard-stats"],
     queryFn: getDashboardStats,
   })
 
-  const { data: agents, isLoading: agentsLoading } = useQuery<Agent[]>({
+  const { data: agents, isLoading: agentsLoading, isError: agentsError } = useQuery<Agent[]>({
     queryKey: ["agents"],
     queryFn: getAgents,
   })
 
-  const { data: runs, isLoading: runsLoading } = useQuery<Run[]>({
+  const { data: runs, isLoading: runsLoading, isError: runsError } = useQuery<Run[]>({
     queryKey: ["runs", "recent"],
     queryFn: () => getRecentRuns(10),
   })
@@ -88,6 +88,8 @@ export default function DashboardPage() {
     }
   }
 
+  // When backend is down, show zeros instead of loading forever
+  const isOffline = statsError && agentsError
   const totalAgents = stats?.totalAgents ?? agents?.length ?? 0
   const runningNow = stats?.runningNow ?? agents?.filter((a) => a.status === "running").length ?? 0
   const successRate = stats?.successRate24h
@@ -103,24 +105,26 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <StatCard
           title="Total Agents"
-          value={statsLoading && !agents ? "-" : totalAgents}
+          value={isOffline ? 0 : (statsLoading && !agents ? "-" : totalAgents)}
           icon={Bot}
           iconColor="text-blue-400"
-          loading={statsLoading && !agents}
+          loading={statsLoading && !agents && !isOffline}
         />
         <StatCard
           title="Running Now"
-          value={statsLoading && !agents ? "-" : runningNow}
-          delta={runningNow}
+          value={isOffline ? 0 : (statsLoading && !agents ? "-" : runningNow)}
+          delta={isOffline ? undefined : runningNow}
           deltaLabel="active"
           icon={Play}
           iconColor="text-emerald-400"
-          loading={statsLoading && !agents}
+          loading={statsLoading && !agents && !isOffline}
         />
         <StatCard
           title="Success Rate 24h"
           value={
-            statsLoading
+            isOffline
+              ? "—"
+              : statsLoading
               ? "-"
               : successRate != null
               ? successRate.toFixed(1) + "%"
@@ -128,14 +132,14 @@ export default function DashboardPage() {
           }
           icon={CheckCircle}
           iconColor="text-emerald-400"
-          loading={statsLoading}
+          loading={statsLoading && !isOffline}
         />
         <StatCard
           title="Cost Today"
-          value={statsLoading ? "-" : formatCost(costToday)}
+          value={isOffline ? "$0.00" : (statsLoading ? "-" : formatCost(costToday))}
           icon={DollarSign}
           iconColor="text-amber-400"
-          loading={statsLoading}
+          loading={statsLoading && !isOffline}
         />
       </div>
 
@@ -144,9 +148,9 @@ export default function DashboardPage() {
           <h2 className="text-lg font-semibold text-slate-100">Agent Fleet</h2>
           <span className="text-xs text-slate-500 font-mono">{agents?.length ?? 0} agents</span>
         </div>
-        {agentsLoading ? (
+        {agentsLoading && !agentsError ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {Array.from({ length: 8 }).map((_, i) => (
+            {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="h-48 rounded-lg bg-slate-900 border border-slate-800 animate-pulse" />
             ))}
           </div>
@@ -181,8 +185,8 @@ export default function DashboardPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {runsLoading ? (
-                  Array.from({ length: 5 }).map((_, i) => (
+                {runsLoading && !runsError ? (
+                  Array.from({ length: 3 }).map((_, i) => (
                     <TableRow key={i} className="border-slate-800">
                       {Array.from({ length: 5 }).map((__, j) => (
                         <TableCell key={j} className="py-3">
