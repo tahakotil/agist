@@ -1,5 +1,6 @@
 import { spawn } from 'child_process';
 import { mkdirSync, writeFileSync, rmSync } from 'fs';
+import { access } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { run, get } from './db.js';
@@ -12,6 +13,7 @@ export interface RunAdapterOptions {
   companyId: string;
   model: string;
   prompt: string;
+  workingDirectory?: string | null;
   adapterConfig?: Record<string, unknown>;
 }
 
@@ -138,7 +140,7 @@ function estimateCostCents(
 export async function spawnClaudeLocal(
   options: RunAdapterOptions
 ): Promise<void> {
-  const { runId, agentId, companyId, model, prompt } = options;
+  const { runId, agentId, companyId, model, prompt, workingDirectory } = options;
 
   const now = new Date().toISOString();
 
@@ -282,14 +284,14 @@ export async function spawnClaudeLocal(
          costCents, logExcerpt, finishedAt, runId]
       );
 
-      run(`UPDATE agents SET status = 'idle', updated_at = ? WHERE id = ?`, [finishedAt, agentId]);
+      // Update agent status and spent in a single statement (avoids double-spend)
+      run(
+        `UPDATE agents SET status = 'idle', spent_monthly_cents = spent_monthly_cents + ?, updated_at = ? WHERE id = ?`,
+        [costCents, finishedAt, agentId]
+      );
       run(
         `UPDATE companies SET spent_monthly_cents = spent_monthly_cents + ?, updated_at = ? WHERE id = ?`,
         [costCents, finishedAt, companyId]
-      );
-      run(
-        `UPDATE agents SET spent_monthly_cents = spent_monthly_cents + ?, updated_at = ? WHERE id = ?`,
-        [costCents, finishedAt, agentId]
       );
 
       broadcast({ type: 'run.completed', data: { runId, agentId, companyId, status: 'timeout' } });
@@ -306,7 +308,7 @@ export async function spawnClaudeLocal(
 
       const finishedAt = new Date().toISOString();
       const exitCode = code ?? -1;
-      const status = exitCode === 0 ? 'success' : 'failed';
+      const status = exitCode === 0 ? 'completed' : 'failed';
       const costCents = estimateCostCents(model, inputTokens, outputTokens);
 
       // Keep last 200 log lines as excerpt
@@ -334,21 +336,16 @@ export async function spawnClaudeLocal(
       try { rmSync(skillDir, { recursive: true, force: true }); } catch { /* ignore */ }
 
       const agentStatus = 'idle';
+      // Update agent status and spent in a single statement (avoids double-spend)
       run(
-        `UPDATE agents SET status = ?, updated_at = ? WHERE id = ?`,
-        [agentStatus, finishedAt, agentId]
+        `UPDATE agents SET status = ?, spent_monthly_cents = spent_monthly_cents + ?, updated_at = ? WHERE id = ?`,
+        [agentStatus, costCents, finishedAt, agentId]
       );
 
       // Update company spent
       run(
         `UPDATE companies SET spent_monthly_cents = spent_monthly_cents + ?, updated_at = ? WHERE id = ?`,
         [costCents, finishedAt, companyId]
-      );
-
-      // Update agent spent
-      run(
-        `UPDATE agents SET spent_monthly_cents = spent_monthly_cents + ?, updated_at = ? WHERE id = ?`,
-        [costCents, finishedAt, agentId]
       );
 
       pushToAgent(agentId, { type: 'status', agentId, status: agentStatus, runId });

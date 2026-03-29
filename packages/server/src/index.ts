@@ -10,7 +10,7 @@ import type { IncomingMessage } from 'http';
 import type { Duplex } from 'stream';
 import { ZodError } from 'zod';
 
-import { initDb, saveDb } from './db.js';
+import { initDb, saveDb, shutdownDb } from './db.js';
 import { healthRouter } from './routes/health.js';
 import { companiesRouter } from './routes/companies.js';
 import { agentsRouter } from './routes/agents.js';
@@ -129,9 +129,9 @@ async function main() {
     // 2. Close all WebSocket connections
     closeAllConnections();
 
-    // 3. Save DB before exit
+    // 3. Stop auto-save interval and do final DB save before exit
     try {
-      saveDb();
+      shutdownDb();
       console.log('[server] Database saved.');
     } catch (err) {
       console.error('[server] Failed to save DB on shutdown:', err);

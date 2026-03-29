@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
+import { isAbsolute } from 'path';
 import { nanoid } from 'nanoid';
 import { all, get, run } from '../db.js';
 import { spawnClaudeLocal } from '../adapter.js';
@@ -17,6 +18,7 @@ const createSchema = z.object({
   reportsTo: z.string().nullable().optional(),
   adapterType: z.enum(['claude_local']).default('claude_local'),
   adapterConfig: z.record(z.unknown()).default({}),
+  workingDirectory: z.string().max(500).nullable().optional(),
   budgetMonthlyCents: z.number().int().min(0).default(0),
   status: z
     .enum(['idle', 'running', 'paused', 'error'])
@@ -37,6 +39,7 @@ interface AgentRow {
   reports_to: string | null;
   adapter_type: string;
   adapter_config: string;
+  working_directory: string | null;
   budget_monthly_cents: number;
   spent_monthly_cents: number;
   created_at: string;
@@ -68,6 +71,7 @@ function rowToAgent(row: AgentRow) {
         return {};
       }
     })(),
+    workingDirectory: row.working_directory ?? null,
     budgetMonthlyCents: row.budget_monthly_cents,
     spentMonthlyCents: row.spent_monthly_cents,
     createdAt: row.created_at,
@@ -122,14 +126,19 @@ agentsRouter.post(
       return c.json({ error: 'Company not found' }, 404);
     }
 
+    // Validate workingDirectory is absolute if provided
+    if (body.workingDirectory != null && !isAbsolute(body.workingDirectory)) {
+      return c.json({ error: 'workingDirectory must be an absolute path' }, 400);
+    }
+
     const now = new Date().toISOString();
     const id = nanoid();
 
     run(
       `INSERT INTO agents (id, company_id, name, role, title, model, capabilities, status,
-       reports_to, adapter_type, adapter_config, budget_monthly_cents, spent_monthly_cents,
+       reports_to, adapter_type, adapter_config, working_directory, budget_monthly_cents, spent_monthly_cents,
        created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
       [
         id,
         companyId,
@@ -142,6 +151,7 @@ agentsRouter.post(
         body.reportsTo ?? null,
         body.adapterType,
         JSON.stringify(body.adapterConfig),
+        body.workingDirectory ?? null,
         body.budgetMonthlyCents,
         now,
         now,
@@ -184,6 +194,11 @@ agentsRouter.patch('/api/agents/:id', zValidator('json', updateSchema), (c) => {
     return c.json({ error: 'Agent not found' }, 404);
   }
 
+  // Validate workingDirectory is absolute if provided (and not null)
+  if (body.workingDirectory != null && !isAbsolute(body.workingDirectory)) {
+    return c.json({ error: 'workingDirectory must be an absolute path' }, 400);
+  }
+
   const now = new Date().toISOString();
   const fields: string[] = [];
   const values: unknown[] = [];
@@ -208,6 +223,10 @@ agentsRouter.patch('/api/agents/:id', zValidator('json', updateSchema), (c) => {
   if (body.adapterConfig !== undefined) {
     fields.push('adapter_config = ?');
     values.push(JSON.stringify(body.adapterConfig));
+  }
+  if ('workingDirectory' in body) {
+    fields.push('working_directory = ?');
+    values.push(body.workingDirectory ?? null);
   }
   if (body.budgetMonthlyCents !== undefined) {
     fields.push('budget_monthly_cents = ?');
@@ -274,8 +293,16 @@ agentsRouter.post('/api/agents/:id/wake', async (c) => {
   }
 
   // Rate limit: prevent re-waking within 10 seconds
-  const lastWake = wakeRateLimit.get(id);
   const now_ms = Date.now();
+
+  // Lazy pruning: clean stale entries when map grows large to prevent memory leak
+  if (wakeRateLimit.size > 100) {
+    for (const [key, timestamp] of wakeRateLimit) {
+      if (now_ms - timestamp > 60_000) wakeRateLimit.delete(key);
+    }
+  }
+
+  const lastWake = wakeRateLimit.get(id);
   if (lastWake !== undefined && now_ms - lastWake < WAKE_COOLDOWN_MS) {
     const retryAfter = Math.ceil((WAKE_COOLDOWN_MS - (now_ms - lastWake)) / 1000);
     return c.json(
@@ -324,6 +351,7 @@ agentsRouter.post('/api/agents/:id/wake', async (c) => {
     companyId: agent.company_id,
     model: agent.model,
     prompt,
+    workingDirectory: agent.working_directory ?? null,
     adapterConfig,
   }).catch((err: unknown) => {
     console.error(`[wake] Adapter error for agent ${agent.id}:`, err);

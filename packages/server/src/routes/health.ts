@@ -18,7 +18,7 @@ healthRouter.get('/api/dashboard/stats', (c) => {
 
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const runStats = get<{ total: number; success: number }>(
-      `SELECT COUNT(*) as total, SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success
+      `SELECT COUNT(*) as total, SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as success
        FROM runs WHERE created_at > ?`,
       [since24h]
     );
@@ -33,8 +33,12 @@ healthRouter.get('/api/dashboard/stats', (c) => {
       [today.toISOString()]
     );
     costTodayCents = costRow?.total ?? 0;
-  } catch {
-    // Return nulls/zeros on error
+  } catch (err) {
+    console.error('[Agist] Dashboard stats query failed:', err);
+    return c.json({
+      error: 'Failed to compute dashboard stats',
+      stats: { totalAgents: 0, running: 0, successRate: null, costToday: 0 },
+    }, 500);
   }
 
   return c.json({
