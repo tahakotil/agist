@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" fill="none">
+  <rect width="1280" height="640" fill="#0F172A"/>
+
+  <!-- Grid pattern -->
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1E293B" stroke-width="0.5"/>
+    </pattern>
+  </defs>
+  <rect width="1280" height="640" fill="url(#grid)"/>
+
+  <!-- Logo nodes -->
+  <circle cx="520" cy="260" r="24" fill="#3B82F6" opacity="0.9"/>
+  <circle cx="620" cy="260" r="24" fill="#8B5CF6" opacity="0.9"/>
+  <circle cx="720" cy="260" r="24" fill="#10B981" opacity="0.9"/>
+
+  <!-- Connections -->
+  <line x1="544" y1="260" x2="596" y2="260" stroke="#475569" stroke-width="2"/>
+  <line x1="644" y1="260" x2="696" y2="260" stroke="#475569" stroke-width="2"/>
+
+  <!-- Glow effects -->
+  <circle cx="520" cy="260" r="24" fill="#3B82F6" opacity="0.2" filter="url(#blur)"/>
+  <circle cx="620" cy="260" r="24" fill="#8B5CF6" opacity="0.2" filter="url(#blur)"/>
+  <circle cx="720" cy="260" r="24" fill="#10B981" opacity="0.2" filter="url(#blur)"/>
+
+  <defs>
+    <filter id="blur" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="12"/>
+    </filter>
+  </defs>
+
+  <!-- Text -->
+  <text x="640" y="360" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="72" font-weight="700" fill="#F8FAFC" letter-spacing="-2">Agist</text>
+  <text x="640" y="410" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="24" fill="#94A3B8">AI Agent Orchestration Platform</text>
+
+  <!-- Bottom badges -->
+  <rect x="440" y="460" width="100" height="32" rx="6" fill="#1E293B"/>
+  <text x="490" y="481" text-anchor="middle" font-family="monospace" font-size="13" fill="#3B82F6">SQLite</text>
+
+  <rect x="560" y="460" width="120" height="32" rx="6" fill="#1E293B"/>
+  <text x="620" y="481" text-anchor="middle" font-family="monospace" font-size="13" fill="#8B5CF6">WebSocket</text>
+
+  <rect x="700" y="460" width="140" height="32" rx="6" fill="#1E293B"/>
+  <text x="770" y="481" text-anchor="middle" font-family="monospace" font-size="13" fill="#10B981">Zero Config</text>
+
+  <!-- Subtle copyright -->
+  <text x="640" y="600" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#475569">Open Source  |  MIT License  |  kotivon.com</text>
+</svg>

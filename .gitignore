@@ -1,0 +1,12 @@
+node_modules/
+.next/
+dist/
+*.db
+*.db-journal
+*.db-wal
+.env
+.env.local
+.DS_Store
+*.log
+.turbo/
+.pnpmfile.cjs

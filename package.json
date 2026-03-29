@@ -1,0 +1,17 @@
+{
+  "name": "agent-platform",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"pnpm --filter @agent-platform/server dev\" \"pnpm --filter @agent-platform/web dev\"",
+    "build": "pnpm -r build",
+    "start": "node packages/server/dist/index.js"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["better-sqlite3", "esbuild", "sharp", "unrs-resolver"]
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.7.3"
+  }
+}
