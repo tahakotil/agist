@@ -25,7 +25,7 @@ function json(res: Response) {
 }
 
 /** Directly insert a run row into the test DB */
-function seedRun(agentId: string, companyId: string, status = 'success') {
+function seedRun(agentId: string, companyId: string, status = 'completed') {
   const db = getActiveDb();
   const id = nanoid();
   const now = new Date().toISOString();
@@ -75,7 +75,7 @@ describe('Runs', () => {
   });
 
   it('GET /api/runs/recent → 200 with seeded runs', async () => {
-    seedRun(agentId, companyId, 'success');
+    seedRun(agentId, companyId, 'completed');
     seedRun(agentId, companyId, 'failed');
 
     const res = await app.request('/api/runs/recent');
@@ -142,7 +142,7 @@ describe('Runs', () => {
     const run = body.run as Record<string, unknown>;
     expect(run.id).toBe(runId);
     expect(run.agentId).toBe(agentId);
-    expect(run.status).toBe('success');
+    expect(run.status).toBe('completed');
     expect(typeof run.cost).toBe('number');
   });
 

@@ -80,6 +80,7 @@ export default function AgentsPage() {
   const [agentRole, setAgentRole] = useState("worker")
   const [agentModel, setAgentModel] = useState("claude-sonnet-4-6")
   const [agentCompanyId, setAgentCompanyId] = useState("")
+  const [agentWorkingDir, setAgentWorkingDir] = useState("")
   const [creating, setCreating] = useState(false)
 
   const { data: agents, isLoading } = useQuery<Agent[]>({
@@ -122,6 +123,7 @@ export default function AgentsPage() {
         title: agentTitle.trim() || undefined,
         role: agentRole,
         model: agentModel,
+        workingDirectory: agentWorkingDir.trim() || null,
       })
       toast.success("Agent created")
       queryClient.invalidateQueries({ queryKey: ["agents"] })
@@ -132,6 +134,7 @@ export default function AgentsPage() {
       setAgentRole("worker")
       setAgentModel("claude-sonnet-4-6")
       setAgentCompanyId("")
+      setAgentWorkingDir("")
     } catch (err) {
       toast.error("Failed to create agent: " + (err instanceof Error ? err.message : "Unknown error"))
     } finally {
@@ -335,6 +338,16 @@ export default function AgentsPage() {
                 placeholder="e.g. Senior Marketing Strategist"
                 className="bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-600"
               />
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 mb-1 block">Working Directory</label>
+              <Input
+                value={agentWorkingDir}
+                onChange={(e) => setAgentWorkingDir(e.target.value)}
+                placeholder="e.g. /home/user/myproject"
+                className="bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-600 font-mono text-sm"
+              />
+              <p className="text-[10px] text-slate-600 mt-1">Absolute path. Claude CLI will run from this directory.</p>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>

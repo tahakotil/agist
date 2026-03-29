@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS agents (
   reports_to            TEXT REFERENCES agents(id) ON DELETE SET NULL,
   adapter_type          TEXT NOT NULL DEFAULT 'claude_local',
   adapter_config        TEXT NOT NULL DEFAULT '{}',
+  working_directory     TEXT,
   budget_monthly_cents  INTEGER NOT NULL DEFAULT 0,
   spent_monthly_cents   INTEGER NOT NULL DEFAULT 0,
   created_at            TEXT NOT NULL,

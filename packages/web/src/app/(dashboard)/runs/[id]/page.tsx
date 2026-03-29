@@ -25,10 +25,12 @@ interface PageProps {
 }
 
 const RUN_STATUS_BADGE: Record<string, string> = {
-  success: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
-  error: "bg-red-500/15 text-red-400 border-red-500/30",
+  completed: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+  failed: "bg-red-500/15 text-red-400 border-red-500/30",
   running: "bg-blue-500/15 text-blue-400 border-blue-500/30",
+  queued: "bg-slate-500/15 text-slate-400 border-slate-500/30",
   cancelled: "bg-slate-500/15 text-slate-400 border-slate-500/30",
+  timeout: "bg-orange-500/15 text-orange-400 border-orange-500/30",
 }
 
 export default function RunDetailPage({ params }: PageProps) {
@@ -71,9 +73,9 @@ export default function RunDetailPage({ params }: PageProps) {
       {/* Run header */}
       <div className="flex items-start gap-4">
         <div className="flex-shrink-0 mt-1">
-          {run.status === "success" ? (
+          {run.status === "completed" ? (
             <CheckCircle className="h-8 w-8 text-emerald-400" />
-          ) : run.status === "error" ? (
+          ) : run.status === "failed" ? (
             <XCircle className="h-8 w-8 text-red-400" />
           ) : run.status === "running" ? (
             <Play className="h-8 w-8 text-blue-400 animate-pulse" />

@@ -246,4 +246,86 @@ describe('Agents CRUD', () => {
     const res = await app.request(`/api/agents/${agentId}/wake`, { method: 'POST' });
     expect(res.status).toBe(409);
   });
+
+  // ── WORKING DIRECTORY ───────────────────────────────────────────────────────
+
+  it('POST agent with absolute workingDirectory → 201 and field is stored', async () => {
+    const res = await app.request(`/api/companies/${companyId}/agents`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'DirAgent', workingDirectory: '/home/user/project' }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    expect(res.status).toBe(201);
+    const body = await json(res);
+    const agent = body.agent as Record<string, unknown>;
+    expect(agent.workingDirectory).toBe('/home/user/project');
+  });
+
+  it('POST agent with relative workingDirectory → 400', async () => {
+    const res = await app.request(`/api/companies/${companyId}/agents`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'BadDir', workingDirectory: 'relative/path' }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect((body.error as string).toLowerCase()).toContain('absolute');
+  });
+
+  it('GET /api/agents/:id returns workingDirectory field', async () => {
+    const createRes = await app.request(`/api/companies/${companyId}/agents`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'DirAgent2', workingDirectory: '/var/www/app' }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const agentId = ((await createRes.json() as Record<string, unknown>).agent as Record<string, unknown>).id as string;
+
+    const res = await app.request(`/api/agents/${agentId}`);
+    const body = await json(res);
+    expect((body.agent as Record<string, unknown>).workingDirectory).toBe('/var/www/app');
+  });
+
+  it('PATCH agent with absolute workingDirectory → 200 and field is updated', async () => {
+    const agentId = await createAgent(app, companyId);
+    const res = await app.request(`/api/agents/${agentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ workingDirectory: '/opt/new-project' }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect((body.agent as Record<string, unknown>).workingDirectory).toBe('/opt/new-project');
+  });
+
+  it('PATCH agent with null workingDirectory → 200 clears the field', async () => {
+    // First set a directory
+    const createRes = await app.request(`/api/companies/${companyId}/agents`, {
+      method: 'POST',
+      body: JSON.stringify({ name: 'ClearDir', workingDirectory: '/tmp/oldpath' }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const agentId = ((await createRes.json() as Record<string, unknown>).agent as Record<string, unknown>).id as string;
+
+    // Now clear it
+    const res = await app.request(`/api/agents/${agentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ workingDirectory: null }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect((body.agent as Record<string, unknown>).workingDirectory).toBeNull();
+  });
+
+  it('PATCH agent with relative workingDirectory → 400', async () => {
+    const agentId = await createAgent(app, companyId);
+    const res = await app.request(`/api/agents/${agentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ workingDirectory: 'not/absolute' }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    expect(res.status).toBe(400);
+    const body = await json(res);
+    expect((body.error as string).toLowerCase()).toContain('absolute');
+  });
 });

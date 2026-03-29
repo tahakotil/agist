@@ -10,7 +10,7 @@ const createSchema = z.object({
   name: z.string().min(1).max(200),
   description: z.string().max(2000).default(''),
   budgetMonthlyCents: z.number().int().min(0).default(0),
-  status: z.enum(['active', 'inactive', 'suspended']).default('active'),
+  status: z.enum(['active', 'paused', 'archived']).default('active'),
 });
 
 const updateSchema = createSchema.partial();

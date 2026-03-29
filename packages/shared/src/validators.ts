@@ -49,6 +49,7 @@ export const CreateAgentSchema = z.object({
   reportsTo: z.string().nullable().optional(),
   adapterType: z.string().min(1).max(100),
   adapterConfig: z.record(z.unknown()).optional().default({}),
+  workingDirectory: z.string().max(500).optional(),
   budgetMonthlyCents: z.number().int().nonnegative().optional().default(0),
 });
 
@@ -62,6 +63,7 @@ export const UpdateAgentSchema = z.object({
   reportsTo: z.string().nullable().optional(),
   adapterType: z.string().min(1).max(100).optional(),
   adapterConfig: z.record(z.unknown()).optional(),
+  workingDirectory: z.string().max(500).nullable().optional(),
   budgetMonthlyCents: z.number().int().nonnegative().optional(),
   spentMonthlyCents: z.number().int().nonnegative().optional(),
 });
@@ -100,8 +102,9 @@ export type UpdateRoutineInput = z.infer<typeof UpdateRoutineSchema>;
 export const RunStatusSchema = z.enum([
   "queued",
   "running",
-  "succeeded",
+  "completed",
   "failed",
+  "timeout",
   "cancelled",
 ]);
 
@@ -136,12 +139,14 @@ export type UpdateRunStatusInput = z.infer<typeof UpdateRunStatusSchema>;
 
 export const IssuePrioritySchema = z.enum(["critical", "high", "medium", "low"]);
 export const IssueStatusSchema = z.enum([
-  "backlog",
-  "todo",
+  "open",
   "in_progress",
-  "in_review",
-  "done",
+  "resolved",
+  "closed",
+  "wont_fix",
 ]);
+
+export const RoutineStatusSchema = z.enum(["active", "paused"]);
 
 export const CreateIssueSchema = z.object({
   companyId: z.string().min(1),
@@ -149,7 +154,7 @@ export const CreateIssueSchema = z.object({
   agentId: z.string().nullable().optional(),
   title: z.string().min(1).max(500),
   description: z.string().max(10000).nullable().optional(),
-  status: IssueStatusSchema.optional().default("backlog"),
+  status: IssueStatusSchema.optional().default("open"),
   priority: IssuePrioritySchema.optional().default("medium"),
 });
 
