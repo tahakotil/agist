@@ -1,7 +1,7 @@
 "use client"
 
 import { useQuery } from "@tanstack/react-query"
-import { api } from "@/lib/api"
+import { getCompanies, getCompanyIssues, type Company, type Issue } from "@/lib/api"
 import { Badge } from "@/components/ui/badge"
 import {
   Table,
@@ -14,19 +14,6 @@ import {
 import { relativeTime, cn } from "@/lib/utils"
 import { AlertCircle, AlertTriangle, Info, XCircle } from "lucide-react"
 import Link from "next/link"
-
-interface Issue {
-  id: string
-  agentId: string
-  agentName: string
-  companyId: string
-  companyName: string
-  severity: "critical" | "high" | "medium" | "low" | "info"
-  message: string
-  details?: string
-  resolvedAt?: string
-  createdAt: string
-}
 
 const SEVERITY_BADGE: Record<string, string> = {
   critical: "bg-red-500/15 text-red-400 border-red-500/30",
@@ -45,9 +32,21 @@ const SEVERITY_ICON: Record<string, React.ReactNode> = {
 }
 
 export default function IssuesPage() {
+  const { data: companies } = useQuery<Company[]>({
+    queryKey: ["companies"],
+    queryFn: getCompanies,
+  })
+
+  const companyIds = companies?.map((c) => c.id) ?? []
+
   const { data: issues, isLoading } = useQuery<Issue[]>({
-    queryKey: ["issues"],
-    queryFn: () => api<Issue[]>("/issues"),
+    queryKey: ["issues", "all", companyIds.join(",")],
+    queryFn: async () => {
+      if (companyIds.length === 0) return []
+      const results = await Promise.all(companyIds.map((cid) => getCompanyIssues(cid)))
+      return results.flat().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    },
+    enabled: companyIds.length > 0,
   })
 
   const open = issues?.filter((i) => !i.resolvedAt) ?? []

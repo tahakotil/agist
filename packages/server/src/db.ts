@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const DATA_DIR = join(homedir(), '.agent-platform');
+const DATA_DIR = join(homedir(), '.agist');
 const DB_PATH = join(DATA_DIR, 'data.db');
 
 mkdirSync(DATA_DIR, { recursive: true });

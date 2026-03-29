@@ -26,7 +26,7 @@ interface CompanyRow {
   updated_at: string;
 }
 
-function rowToCompany(row: CompanyRow) {
+function rowToCompany(row: CompanyRow & { agent_count?: number }) {
   return {
     id: row.id,
     name: row.name,
@@ -34,6 +34,7 @@ function rowToCompany(row: CompanyRow) {
     status: row.status,
     budgetMonthlyCents: row.budget_monthly_cents,
     spentMonthlyCents: row.spent_monthly_cents,
+    agentCount: row.agent_count ?? 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -41,7 +42,13 @@ function rowToCompany(row: CompanyRow) {
 
 // GET /api/companies
 companiesRouter.get('/api/companies', (c) => {
-  const rows = all<CompanyRow>(`SELECT * FROM companies ORDER BY created_at DESC`);
+  const rows = all<CompanyRow & { agent_count: number }>(
+    `SELECT c.*, COUNT(a.id) as agent_count
+     FROM companies c
+     LEFT JOIN agents a ON a.company_id = c.id
+     GROUP BY c.id
+     ORDER BY c.created_at DESC`
+  );
 
   return c.json({ companies: rows.map(rowToCompany) });
 });
@@ -63,14 +70,22 @@ companiesRouter.post(
 
     const row = get<CompanyRow>(`SELECT * FROM companies WHERE id = ?`, [id]);
 
-    return c.json({ company: rowToCompany(row!) }, 201);
+    return c.json({ company: rowToCompany({ ...row!, agent_count: 0 }) }, 201);
   }
 );
 
 // GET /api/companies/:id
 companiesRouter.get('/api/companies/:id', (c) => {
   const id = c.req.param('id');
-  const row = get<CompanyRow>(`SELECT * FROM companies WHERE id = ?`, [id]);
+  const rows = all<CompanyRow & { agent_count: number }>(
+    `SELECT c.*, COUNT(a.id) as agent_count
+     FROM companies c
+     LEFT JOIN agents a ON a.company_id = c.id
+     WHERE c.id = ?
+     GROUP BY c.id`,
+    [id]
+  );
+  const row = rows[0];
 
   if (!row) {
     return c.json({ error: 'Company not found' }, 404);

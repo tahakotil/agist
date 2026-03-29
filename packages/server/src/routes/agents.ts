@@ -10,7 +10,7 @@ export const agentsRouter = new Hono();
 
 const createSchema = z.object({
   name: z.string().min(1).max(200),
-  role: z.enum(['lead', 'worker', 'specialist']).default('worker'),
+  role: z.string().min(1).default('worker'),
   title: z.string().max(200).default(''),
   model: z.string().default('claude-opus-4-5'),
   capabilities: z.array(z.string()).default([]),
@@ -74,6 +74,23 @@ function rowToAgent(row: AgentRow) {
     updatedAt: row.updated_at,
   };
 }
+
+// GET /api/agents — list ALL agents across all companies with company name
+agentsRouter.get('/api/agents', (c) => {
+  const rows = all<AgentRow & { company_name: string }>(
+    `SELECT a.*, c.name as company_name
+     FROM agents a
+     LEFT JOIN companies c ON c.id = a.company_id
+     ORDER BY a.created_at DESC`
+  );
+
+  return c.json({
+    agents: rows.map((row) => ({
+      ...rowToAgent(row),
+      companyName: row.company_name ?? '',
+    })),
+  });
+});
 
 // GET /api/companies/:companyId/agents
 agentsRouter.get('/api/companies/:companyId/agents', (c) => {
@@ -140,13 +157,20 @@ agentsRouter.post(
 // GET /api/agents/:id
 agentsRouter.get('/api/agents/:id', (c) => {
   const id = c.req.param('id');
-  const row = get<AgentRow>(`SELECT * FROM agents WHERE id = ?`, [id]);
+  const rows = all<AgentRow & { company_name: string }>(
+    `SELECT a.*, c.name as company_name
+     FROM agents a
+     LEFT JOIN companies c ON c.id = a.company_id
+     WHERE a.id = ?`,
+    [id]
+  );
+  const row = rows[0];
 
   if (!row) {
     return c.json({ error: 'Agent not found' }, 404);
   }
 
-  return c.json({ agent: rowToAgent(row) });
+  return c.json({ agent: { ...rowToAgent(row), companyName: row.company_name ?? '' } });
 });
 
 // PATCH /api/agents/:id
@@ -227,8 +251,12 @@ agentsRouter.delete('/api/agents/:id', (c) => {
   return c.json({ success: true });
 });
 
+const wakeSchema = z.object({
+  prompt: z.string().optional(),
+});
+
 // POST /api/agents/:id/wake — manual trigger
-agentsRouter.post('/api/agents/:id/wake', (c) => {
+agentsRouter.post('/api/agents/:id/wake', async (c) => {
   const id = c.req.param('id');
 
   const agent = get<AgentRow>(`SELECT * FROM agents WHERE id = ?`, [id]);
@@ -239,6 +267,16 @@ agentsRouter.post('/api/agents/:id/wake', (c) => {
 
   if (agent.status === 'running') {
     return c.json({ error: 'Agent is already running' }, 409);
+  }
+
+  // Parse optional body (may be empty)
+  let bodyPrompt: string | undefined;
+  try {
+    const raw = await c.req.json().catch(() => ({}));
+    const parsed = wakeSchema.safeParse(raw);
+    if (parsed.success) bodyPrompt = parsed.data.prompt;
+  } catch {
+    // ignore body parse errors
   }
 
   const runId = nanoid();
@@ -259,6 +297,7 @@ agentsRouter.post('/api/agents/:id/wake', (c) => {
   })();
 
   const prompt =
+    bodyPrompt ??
     (adapterConfig['defaultPrompt'] as string | undefined) ??
     `You are ${agent.name}, ${agent.title}. Perform your next task.`;
 

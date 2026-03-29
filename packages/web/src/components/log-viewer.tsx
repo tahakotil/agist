@@ -5,77 +5,116 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import { Download, Copy, ArrowDown, Wifi, WifiOff } from "lucide-react"
-import type { LogEntry } from "@/lib/api"
+
+const MAX_LOG_LINES = 500
+const RECONNECT_DELAY_MS = 3000
+const MAX_RETRIES = 5
+
+interface RawLogLine {
+  timestamp: string
+  line: string
+  runId?: string
+}
 
 interface LogViewerProps {
   agentId: string
   runId?: string
-  initialLogs?: LogEntry[]
   height?: string
 }
 
-const LEVEL_STYLES: Record<string, string> = {
-  INFO: "text-slate-400",
-  WARN: "text-amber-400",
-  ERROR: "text-red-400",
-  DEBUG: "text-slate-600",
+function classifyLine(line: string): "error" | "warn" | "info" | "debug" {
+  const lower = line.toLowerCase()
+  if (lower.includes("error") || lower.includes("exception") || lower.includes("fail")) return "error"
+  if (lower.includes("warn")) return "warn"
+  if (lower.includes("debug") || lower.includes("trace")) return "debug"
+  return "info"
 }
 
-const LEVEL_PREFIX: Record<string, string> = {
-  INFO: " INFO",
-  WARN: " WARN",
-  ERROR: "ERROR",
-  DEBUG: "DEBUG",
+const LINE_STYLES: Record<string, string> = {
+  error: "text-red-400",
+  warn: "text-amber-400",
+  info: "text-slate-300",
+  debug: "text-slate-600",
 }
 
-export function LogViewer({ agentId, runId, initialLogs = [], height = "400px" }: LogViewerProps) {
-  const [logs, setLogs] = useState<LogEntry[]>(initialLogs)
+export function LogViewer({ agentId, runId, height = "400px" }: LogViewerProps) {
+  const [logs, setLogs] = useState<RawLogLine[]>([])
   const [connected, setConnected] = useState(false)
   const [autoScroll, setAutoScroll] = useState(true)
   const bottomRef = useRef<HTMLDivElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
+  const retriesRef = useRef(0)
+  const unmountedRef = useRef(false)
 
   useEffect(() => {
-    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:4400/ws"
-    let ws: WebSocket
+    unmountedRef.current = false
+    retriesRef.current = 0
 
-    try {
-      ws = new WebSocket(wsUrl)
-      wsRef.current = ws
+    function connect() {
+      if (unmountedRef.current) return
+      const wsUrl = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:4400/ws"
+      let ws: WebSocket
 
-      ws.onopen = () => {
-        setConnected(true)
-        const msg = runId
-          ? JSON.stringify({ type: "subscribe_run", runId })
-          : JSON.stringify({ type: "subscribe_agent", agentId })
-        ws.send(msg)
-      }
+      try {
+        ws = new WebSocket(wsUrl)
+        wsRef.current = ws
 
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data)
-          if (data.type === "log" && data.entry) {
-            setLogs((prev) => [...prev.slice(-4999), data.entry])
+        ws.onopen = () => {
+          if (unmountedRef.current) { ws.close(); return }
+          retriesRef.current = 0
+          setConnected(true)
+          // Server expects { type: "subscribe", agentId }
+          ws.send(JSON.stringify({ type: "subscribe", agentId }))
+        }
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data as string)
+            // Server sends: { type: "log", runId, line, timestamp }
+            if (data.type === "log" && typeof data.line === "string") {
+              // Filter by runId if provided
+              if (runId && data.runId !== runId) return
+              const entry: RawLogLine = {
+                timestamp: data.timestamp ?? new Date().toISOString(),
+                line: data.line,
+                runId: data.runId,
+              }
+              setLogs((prev) => {
+                const next = [...prev, entry]
+                return next.length > MAX_LOG_LINES ? next.slice(-MAX_LOG_LINES) : next
+              })
+            }
+          } catch {
+            // ignore malformed messages
           }
-        } catch {
-          // ignore malformed messages
+        }
+
+        ws.onclose = () => {
+          setConnected(false)
+          if (!unmountedRef.current && retriesRef.current < MAX_RETRIES) {
+            retriesRef.current += 1
+            setTimeout(connect, RECONNECT_DELAY_MS)
+          }
+        }
+
+        ws.onerror = () => {
+          setConnected(false)
+        }
+      } catch {
+        setConnected(false)
+        if (!unmountedRef.current && retriesRef.current < MAX_RETRIES) {
+          retriesRef.current += 1
+          setTimeout(connect, RECONNECT_DELAY_MS)
         }
       }
-
-      ws.onclose = () => {
-        setConnected(false)
-      }
-
-      ws.onerror = () => {
-        setConnected(false)
-      }
-    } catch {
-      setConnected(false)
     }
 
+    connect()
+
     return () => {
-      ws?.close()
+      unmountedRef.current = true
+      wsRef.current?.close()
     }
   }, [agentId, runId])
 
@@ -87,20 +126,14 @@ export function LogViewer({ agentId, runId, initialLogs = [], height = "400px" }
 
   const handleCopy = useCallback(() => {
     const text = logs
-      .map(
-        (l) =>
-          `[${new Date(l.timestamp).toISOString()}] [${l.level}] ${l.message}`
-      )
+      .map((l) => `[${l.timestamp}] ${l.line}`)
       .join("\n")
     navigator.clipboard.writeText(text).catch(() => {})
   }, [logs])
 
   const handleDownload = useCallback(() => {
     const text = logs
-      .map(
-        (l) =>
-          `[${new Date(l.timestamp).toISOString()}] [${l.level}] ${l.message}`
-      )
+      .map((l) => `[${l.timestamp}] ${l.line}`)
       .join("\n")
     const blob = new Blob([text], { type: "text/plain" })
     const url = URL.createObjectURL(blob)
@@ -185,29 +218,24 @@ export function LogViewer({ agentId, runId, initialLogs = [], height = "400px" }
               Waiting for logs...
             </p>
           ) : (
-            logs.map((log, i) => (
-              <div key={i} className="flex gap-3 text-xs font-mono leading-5 hover:bg-slate-900/50 px-1 rounded">
-                <span className="text-slate-700 flex-shrink-0 tabular-nums">
-                  {new Date(log.timestamp).toLocaleTimeString("en-US", {
-                    hour12: false,
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    second: "2-digit",
-                  })}
-                </span>
-                <span
-                  className={cn(
-                    "flex-shrink-0 font-semibold w-10",
-                    LEVEL_STYLES[log.level] ?? "text-slate-400"
-                  )}
-                >
-                  {LEVEL_PREFIX[log.level] ?? log.level}
-                </span>
-                <span className={cn("break-all", LEVEL_STYLES[log.level] ?? "text-slate-300")}>
-                  {log.message}
-                </span>
-              </div>
-            ))
+            logs.map((log, i) => {
+              const level = classifyLine(log.line)
+              return (
+                <div key={i} className="flex gap-3 text-xs font-mono leading-5 hover:bg-slate-900/50 px-1 rounded">
+                  <span className="text-slate-700 flex-shrink-0 tabular-nums">
+                    {new Date(log.timestamp).toLocaleTimeString("en-US", {
+                      hour12: false,
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      second: "2-digit",
+                    })}
+                  </span>
+                  <span className={cn("break-all", LINE_STYLES[level])}>
+                    {log.line}
+                  </span>
+                </div>
+              )
+            })
           )}
           <div ref={bottomRef} />
         </div>

@@ -96,16 +96,32 @@ export function initWebSocketServer(): WebSocketServer {
 }
 
 export function pushToAgent(agentId: string, payload: WSPush): void {
-  const clients = agentSubscriptions.get(agentId);
-  if (!clients || clients.size === 0) return;
-
   const message = JSON.stringify(payload);
-  for (const ws of clients) {
-    if (ws.readyState === WebSocket.OPEN) {
-      try {
-        ws.send(message);
-      } catch {
-        // Client gone
+
+  // Send to clients subscribed to this specific agent
+  const clients = agentSubscriptions.get(agentId);
+  if (clients) {
+    for (const ws of clients) {
+      if (ws.readyState === WebSocket.OPEN) {
+        try {
+          ws.send(message);
+        } catch {
+          // Client gone
+        }
+      }
+    }
+  }
+
+  // Also send to wildcard '*' subscribers (e.g. dev tools / monitoring)
+  const wildcardClients = agentSubscriptions.get('*');
+  if (wildcardClients) {
+    for (const ws of wildcardClients) {
+      if (ws.readyState === WebSocket.OPEN) {
+        try {
+          ws.send(message);
+        } catch {
+          // Client gone
+        }
       }
     }
   }

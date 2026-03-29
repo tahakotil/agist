@@ -1,14 +1,14 @@
 /**
  * Standalone migration runner.
  * Usage: tsx src/migrate.ts [db-path]
- * Default db path: ./agent-platform.db
+ * Default db path: ./agist.db
  */
 
 import { createDb } from "./db.js";
 import { resolve } from "path";
 import { writeFileSync } from "fs";
 
-const dbPath = resolve(process.argv[2] ?? "agent-platform.db");
+const dbPath = resolve(process.argv[2] ?? "agist.db");
 
 console.log(`Running migrations on: ${dbPath}`);
 const db = await createDb(dbPath);

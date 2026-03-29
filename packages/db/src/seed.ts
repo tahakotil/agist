@@ -12,7 +12,7 @@ import {
 } from "./queries.js";
 import { resolve } from "path";
 
-const dbPath = resolve(process.argv[2] ?? "agent-platform.db");
+const dbPath = resolve(process.argv[2] ?? "agist.db");
 const db = createDb(dbPath);
 
 const companies = makeCompanyQueries(db);

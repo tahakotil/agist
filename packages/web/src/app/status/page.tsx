@@ -1,16 +1,33 @@
 "use client"
 
 import { useQuery } from "@tanstack/react-query"
-import { api, type Agent } from "@/lib/api"
+import { getAgents, type Agent } from "@/lib/api"
 import { Badge } from "@/components/ui/badge"
 import { relativeTime, cn } from "@/lib/utils"
 import { Zap, RefreshCw } from "lucide-react"
 import { useState, useEffect } from "react"
 
 const MODEL_BADGE: Record<string, string> = {
+  "claude-haiku-4-5-20251001": "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+  "claude-sonnet-4-6": "bg-blue-500/15 text-blue-400 border-blue-500/30",
+  "claude-opus-4-5": "bg-violet-500/15 text-violet-400 border-violet-500/30",
+  "claude-opus-4-6": "bg-violet-500/15 text-violet-400 border-violet-500/30",
   haiku: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
   sonnet: "bg-blue-500/15 text-blue-400 border-blue-500/30",
   opus: "bg-violet-500/15 text-violet-400 border-violet-500/30",
+}
+
+function getModelBadge(model: string): string {
+  if (MODEL_BADGE[model]) return MODEL_BADGE[model]
+  const key = Object.keys(MODEL_BADGE).find((k) => model.includes(k))
+  return key ? MODEL_BADGE[key] : "bg-slate-500/15 text-slate-400 border-slate-500/30"
+}
+
+function modelShortLabel(model: string): string {
+  if (model.includes("haiku")) return "Haiku"
+  if (model.includes("sonnet")) return "Sonnet"
+  if (model.includes("opus")) return "Opus"
+  return model
 }
 
 const STATUS_CONFIG: Record<string, { dot: string; ring: string; label: string; bg: string }> = {
@@ -45,7 +62,7 @@ export default function StatusBoardPage() {
 
   const { data: agents, isLoading, dataUpdatedAt } = useQuery<Agent[]>({
     queryKey: ["agents"],
-    queryFn: () => api<Agent[]>("/agents"),
+    queryFn: () => getAgents(),
     refetchInterval: 5000,
   })
 
@@ -170,22 +187,15 @@ export default function StatusBoardPage() {
                 <Badge
                   className={cn(
                     "mt-2 text-[9px] px-1.5 py-0 h-4 border font-mono",
-                    MODEL_BADGE[agent.model] ?? "bg-slate-500/15 text-slate-400 border-slate-500/30"
+                    getModelBadge(agent.model)
                   )}
                 >
-                  {agent.model}
+                  {modelShortLabel(agent.model)}
                 </Badge>
 
-                {/* Current task */}
-                {agent.currentTask && (
-                  <p className="mt-2 text-[10px] text-slate-500 italic truncate">
-                    {agent.currentTask}
-                  </p>
-                )}
-
-                {/* Last run */}
+                {/* Last updated */}
                 <p className="mt-2 text-[10px] text-slate-600">
-                  {relativeTime(agent.lastRunAt)}
+                  {relativeTime(agent.updatedAt)}
                 </p>
               </div>
             )

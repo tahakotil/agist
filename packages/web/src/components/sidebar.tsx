@@ -45,8 +45,8 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
           <Zap className="w-4 h-4 text-white" />
         </div>
         <div>
-          <span className="font-bold text-slate-100 text-sm">AgentPlatform</span>
-          <p className="text-[10px] text-slate-500 leading-tight">Orchestration Console</p>
+          <span className="font-bold text-slate-100 text-sm">Agist</span>
+          <p className="text-[10px] text-slate-500 leading-tight">Agent Orchestration</p>
         </div>
       </div>
 

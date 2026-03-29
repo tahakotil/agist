@@ -39,14 +39,17 @@ function estimateCostCents(
   inputTokens: number,
   outputTokens: number
 ): number {
-  // Rough cost estimates per 1M tokens in cents
+  // Cost rates per 1M tokens in cents ($0.80 input = 80 cents per 1M)
   const pricing: Record<string, { input: number; output: number }> = {
     'claude-opus-4-5': { input: 1500, output: 7500 },
     'claude-sonnet-4-5': { input: 300, output: 1500 },
-    'claude-haiku-4-5': { input: 25, output: 125 },
+    'claude-haiku-4-5': { input: 80, output: 400 },
     'claude-opus-4': { input: 1500, output: 7500 },
     'claude-sonnet-4': { input: 300, output: 1500 },
-    'claude-haiku-4': { input: 25, output: 125 },
+    'claude-haiku-4': { input: 80, output: 400 },
+    'haiku': { input: 80, output: 400 },
+    'sonnet': { input: 300, output: 1500 },
+    'opus': { input: 1500, output: 7500 },
   };
 
   const modelKey = Object.keys(pricing).find((k) => model.includes(k)) ?? '';
@@ -86,6 +89,7 @@ export async function spawnClaudeLocal(
   const args = [
     '--model', model,
     '--print',
+    '--verbose',
     '--output-format', 'stream-json',
     '-p', prompt,
   ];

@@ -21,9 +21,26 @@ interface OrgChartProps {
 }
 
 const MODEL_STYLES: Record<string, string> = {
+  "claude-haiku-4-5-20251001": "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
+  "claude-sonnet-4-6": "bg-blue-500/20 text-blue-300 border-blue-500/40",
+  "claude-opus-4-5": "bg-violet-500/20 text-violet-300 border-violet-500/40",
+  "claude-opus-4-6": "bg-violet-500/20 text-violet-300 border-violet-500/40",
   haiku: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
   sonnet: "bg-blue-500/20 text-blue-300 border-blue-500/40",
   opus: "bg-violet-500/20 text-violet-300 border-violet-500/40",
+}
+
+function getModelStyle(model: string): string {
+  if (MODEL_STYLES[model]) return MODEL_STYLES[model]
+  const key = Object.keys(MODEL_STYLES).find((k) => model.includes(k))
+  return key ? MODEL_STYLES[key] : "bg-slate-500/20 text-slate-300 border-slate-500/40"
+}
+
+function modelShortLabel(model: string): string {
+  if (model.includes("haiku")) return "Haiku"
+  if (model.includes("sonnet")) return "Sonnet"
+  if (model.includes("opus")) return "Opus"
+  return model
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -35,7 +52,7 @@ const STATUS_COLOR: Record<string, string> = {
 
 function AgentNode({ data }: { data: { agent: Agent } }) {
   const { agent } = data
-  const modelStyle = MODEL_STYLES[agent.model] ?? "bg-slate-500/20 text-slate-300 border-slate-500/40"
+  const mStyle = getModelStyle(agent.model)
   const statusColor = STATUS_COLOR[agent.status] ?? "bg-slate-400"
 
   return (
@@ -50,10 +67,10 @@ function AgentNode({ data }: { data: { agent: Agent } }) {
         <span
           className={cn(
             "text-[10px] px-1.5 py-0.5 rounded border font-mono",
-            modelStyle
+            mStyle
           )}
         >
-          {agent.model}
+          {modelShortLabel(agent.model)}
         </span>
         <span className="text-[10px] text-slate-500 truncate">{agent.role}</span>
       </div>

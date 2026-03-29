@@ -6,7 +6,7 @@ import type {
   Routine,
   Run,
   Issue,
-} from "@agent-platform/shared";
+} from "@agist/shared";
 import type {
   CreateCompanyInput,
   UpdateCompanyInput,
@@ -18,7 +18,7 @@ import type {
   UpdateRunStatusInput,
   CreateIssueInput,
   UpdateIssueInput,
-} from "@agent-platform/shared";
+} from "@agist/shared";
 
 // ─── sql.js helpers ───────────────────────────────────────────────────────────
 

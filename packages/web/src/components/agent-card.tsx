@@ -15,9 +15,24 @@ interface AgentCardProps {
 }
 
 const MODEL_STYLES: Record<string, string> = {
+  "claude-haiku-4-5-20251001": "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+  "claude-sonnet-4-6": "bg-blue-500/15 text-blue-400 border-blue-500/30",
+  "claude-opus-4-5": "bg-violet-500/15 text-violet-400 border-violet-500/30",
+  "claude-opus-4-6": "bg-violet-500/15 text-violet-400 border-violet-500/30",
   haiku: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
   sonnet: "bg-blue-500/15 text-blue-400 border-blue-500/30",
   opus: "bg-violet-500/15 text-violet-400 border-violet-500/30",
+}
+
+function modelShortLabel(model: string): string {
+  if (model.includes("haiku")) return "Haiku"
+  if (model.includes("sonnet")) return "Sonnet"
+  if (model.includes("opus")) return "Opus"
+  return model
+}
+
+function modelStyle(model: string): string {
+  return MODEL_STYLES[model] ?? MODEL_STYLES[Object.keys(MODEL_STYLES).find((k) => model.includes(k)) ?? ""] ?? "bg-slate-500/15 text-slate-400 border-slate-500/30"
 }
 
 const STATUS_DOT: Record<string, { color: string; animated: boolean }> = {
@@ -29,7 +44,7 @@ const STATUS_DOT: Record<string, { color: string; animated: boolean }> = {
 
 export function AgentCard({ agent, onWake, onPause }: AgentCardProps) {
   const dot = STATUS_DOT[agent.status] ?? { color: "bg-slate-400", animated: false }
-  const modelStyle = MODEL_STYLES[agent.model] ?? "bg-slate-500/15 text-slate-400 border-slate-500/30"
+  const mStyle = modelStyle(agent.model)
 
   return (
     <Card className="bg-slate-900 border-slate-800 hover:border-slate-700 transition-all duration-200 hover:shadow-lg hover:shadow-slate-900/50 hover:-translate-y-0.5 group">
@@ -62,10 +77,10 @@ export function AgentCard({ agent, onWake, onPause }: AgentCardProps) {
           <Badge
             className={cn(
               "text-[10px] px-1.5 py-0 h-4 border font-mono flex-shrink-0",
-              modelStyle
+              mStyle
             )}
           >
-            {agent.model}
+            {modelShortLabel(agent.model)}
           </Badge>
         </div>
       </CardHeader>
@@ -80,29 +95,10 @@ export function AgentCard({ agent, onWake, onPause }: AgentCardProps) {
           </Badge>
         </div>
 
-        {agent.cronSchedule && (
-          <div className="flex items-center gap-1.5 text-xs text-slate-500">
-            <Clock className="h-3 w-3 flex-shrink-0" />
-            <span className="font-mono text-[11px]">{agent.cronSchedule}</span>
-          </div>
-        )}
-
-        <div className="grid grid-cols-2 gap-2 text-[11px]">
-          <div>
-            <span className="text-slate-600 block">Last run</span>
-            <span className="text-slate-400">{relativeTime(agent.lastRunAt)}</span>
-          </div>
-          <div>
-            <span className="text-slate-600 block">Next run</span>
-            <span className="text-slate-400">{relativeTime(agent.nextRunAt)}</span>
-          </div>
+        <div className="flex items-center gap-1.5 text-xs text-slate-500">
+          <Clock className="h-3 w-3 flex-shrink-0" />
+          <span className="text-[11px]">Updated {relativeTime(agent.updatedAt)}</span>
         </div>
-
-        {agent.currentTask && (
-          <p className="text-[11px] text-slate-500 truncate italic">
-            {agent.currentTask}
-          </p>
-        )}
 
         <div className="flex items-center gap-1.5 pt-1">
           <Button

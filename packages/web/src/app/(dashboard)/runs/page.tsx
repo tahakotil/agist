@@ -1,7 +1,7 @@
 "use client"
 
 import { useQuery } from "@tanstack/react-query"
-import { api, type Run } from "@/lib/api"
+import { getRecentRuns, type Run } from "@/lib/api"
 import {
   Table,
   TableBody,
@@ -31,8 +31,8 @@ const STATUS_ICON: Record<string, React.ReactNode> = {
 
 export default function RunsPage() {
   const { data: runs, isLoading } = useQuery<Run[]>({
-    queryKey: ["runs"],
-    queryFn: () => api<Run[]>("/runs?limit=100"),
+    queryKey: ["runs", "recent"],
+    queryFn: () => getRecentRuns(100),
   })
 
   return (

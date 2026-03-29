@@ -1,7 +1,7 @@
 "use client"
 
 import { useQuery } from "@tanstack/react-query"
-import { api, type Routine } from "@/lib/api"
+import { getCompanies, getCompanyRoutines, updateRoutine, type Routine, type Company } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -13,19 +13,40 @@ import { useQueryClient } from "@tanstack/react-query"
 export default function RoutinesPage() {
   const queryClient = useQueryClient()
 
-  const { data: routines, isLoading } = useQuery<Routine[]>({
-    queryKey: ["routines"],
-    queryFn: () => api<Routine[]>("/routines"),
+  const { data: companies } = useQuery<Company[]>({
+    queryKey: ["companies"],
+    queryFn: getCompanies,
   })
 
+  // Fetch routines for all companies in parallel; flatten results
+  const companyIds = companies?.map((c) => c.id) ?? []
+
+  const routineQueries = companyIds.map((cid) => ({
+    queryKey: ["companies", cid, "routines"],
+    queryFn: () => getCompanyRoutines(cid),
+  }))
+
+  // Use a single derived state by watching the query cache
+  const { data: allRoutines, isLoading } = useQuery<Routine[]>({
+    queryKey: ["routines", "all", companyIds.join(",")],
+    queryFn: async () => {
+      if (companyIds.length === 0) return []
+      const results = await Promise.all(companyIds.map((cid) => getCompanyRoutines(cid)))
+      return results.flat()
+    },
+    enabled: companyIds.length > 0,
+  })
+
+  const routines = allRoutines ?? []
+
   async function handleToggle(routine: Routine) {
-    const action = routine.enabled ? "pause" : "enable"
     try {
-      await api(`/routines/${routine.id}/${action}`, { method: "POST" })
-      toast.success(`Routine ${action}d`)
+      await updateRoutine(routine.id, { enabled: !routine.enabled })
+      toast.success(routine.enabled ? "Routine paused" : "Routine enabled")
       queryClient.invalidateQueries({ queryKey: ["routines"] })
+      queryClient.invalidateQueries({ queryKey: ["companies"] })
     } catch {
-      toast.error(`Failed to ${action} routine`)
+      toast.error("Failed to update routine")
     }
   }
 
@@ -53,7 +74,7 @@ export default function RoutinesPage() {
                   <div className="flex items-center gap-2">
                     <Timer className="h-4 w-4 text-blue-400 flex-shrink-0" />
                     <CardTitle className="text-sm font-semibold text-slate-200">
-                      {routine.name}
+                      {routine.title}
                     </CardTitle>
                   </div>
                   <Badge
@@ -71,16 +92,16 @@ export default function RoutinesPage() {
               <CardContent className="space-y-3">
                 <div className="flex items-center gap-1.5 text-xs text-slate-500">
                   <Clock className="h-3 w-3" />
-                  <span className="font-mono">{routine.cronSchedule}</span>
+                  <span className="font-mono">{routine.cronExpression}</span>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-[11px]">
                   <div>
                     <span className="text-slate-600 block">Last run</span>
-                    <span className="text-slate-400">{relativeTime(routine.lastRunAt)}</span>
+                    <span className="text-slate-400">{routine.lastRunAt ? relativeTime(routine.lastRunAt) : "Never"}</span>
                   </div>
                   <div>
                     <span className="text-slate-600 block">Next run</span>
-                    <span className="text-slate-400">{relativeTime(routine.nextRunAt)}</span>
+                    <span className="text-slate-400">{routine.nextRunAt ? relativeTime(routine.nextRunAt) : "—"}</span>
                   </div>
                 </div>
                 <Button

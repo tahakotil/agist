@@ -1,5 +1,5 @@
 {
-  "name": "@agent-platform/server",
+  "name": "@agist/server",
   "version": "0.1.0",
   "type": "module",
   "main": "src/index.ts",

@@ -2,7 +2,7 @@
 
 import { use } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { api, type Run } from "@/lib/api"
+import { getRun, type Run } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { buttonVariants } from "@/components/ui/button"
@@ -36,7 +36,7 @@ export default function RunDetailPage({ params }: PageProps) {
 
   const { data: run, isLoading } = useQuery<Run>({
     queryKey: ["runs", id],
-    queryFn: () => api<Run>(`/runs/${id}`),
+    queryFn: () => getRun(id),
   })
 
   if (isLoading) {
@@ -161,12 +161,28 @@ export default function RunDetailPage({ params }: PageProps) {
       {/* Logs */}
       <section>
         <h2 className="text-lg font-semibold text-slate-100 mb-4">Logs</h2>
-        <LogViewer
-          agentId={run.agentId}
-          runId={run.id}
-          initialLogs={run.logs ?? []}
-          height="500px"
-        />
+        {run.status === "running" ? (
+          <LogViewer
+            agentId={run.agentId}
+            runId={run.id}
+            height="500px"
+          />
+        ) : run.logExcerpt ? (
+          <div className="rounded-lg border border-slate-800 bg-slate-950 overflow-hidden">
+            <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-800 bg-slate-900/50">
+              <span className="text-xs font-medium text-slate-400 font-mono uppercase tracking-wider">Log Excerpt</span>
+            </div>
+            <div className="p-4 max-h-[500px] overflow-y-auto">
+              <pre className="text-xs font-mono text-slate-300 whitespace-pre-wrap break-all leading-5">
+                {run.logExcerpt}
+              </pre>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-slate-800 bg-slate-950 p-8 text-center text-slate-600 text-xs font-mono">
+            No logs available for this run
+          </div>
+        )}
       </section>
     </div>
   )

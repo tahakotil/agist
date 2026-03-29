@@ -57,7 +57,8 @@ You define goals → Agist schedules agents → Agents do the work → You revie
 git clone https://github.com/tahakotil/agist.git
 cd agist
 pnpm install
-pnpm dev
+pnpm seed    # load demo data (optional)
+pnpm dev     # opens dashboard at localhost:3004
 ```
 
 Open **http://localhost:3004** — that's it.

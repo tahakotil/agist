@@ -1,6 +1,7 @@
 import { Sidebar } from "@/components/sidebar"
 import { Header } from "@/components/header"
 import { CommandPalette } from "@/components/command-palette"
+import { SSEProvider } from "@/components/sse-provider"
 
 export default function DashboardLayout({
   children,
@@ -9,6 +10,9 @@ export default function DashboardLayout({
 }) {
   return (
     <div className="flex h-screen overflow-hidden">
+      {/* SSE connection for real-time cache invalidation */}
+      <SSEProvider />
+
       {/* Sidebar — hidden on mobile, visible on md+ */}
       <aside className="hidden md:flex flex-col w-56 flex-shrink-0">
         <Sidebar />

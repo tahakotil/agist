@@ -26,7 +26,7 @@ export default function SettingsPage() {
       <div>
         <h1 className="text-2xl font-bold text-slate-100">Settings</h1>
         <p className="text-sm text-slate-500 mt-1">
-          Configure your AgentPlatform console
+          Configure your Agist console
         </p>
       </div>
 

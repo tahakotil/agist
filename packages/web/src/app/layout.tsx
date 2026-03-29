@@ -3,7 +3,7 @@ import "./globals.css"
 import { Providers } from "@/components/providers"
 
 export const metadata: Metadata = {
-  title: "AgentPlatform — Orchestration Console",
+  title: "Agist — Agent Orchestration",
   description: "AI agent orchestration dashboard",
 }
 

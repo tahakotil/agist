@@ -1,5 +1,5 @@
 {
-  "name": "@agent-platform/db",
+  "name": "@agist/db",
   "version": "0.1.0",
   "type": "module",
   "main": "src/index.ts",
@@ -7,7 +7,7 @@
   "dependencies": {
     "sql.js": "^1.12.0",
     "nanoid": "^5.1.0",
-    "@agent-platform/shared": "workspace:*"
+    "@agist/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/sql.js": "^1.4.9",

@@ -1,11 +1,13 @@
 {
-  "name": "agent-platform",
+  "name": "agist",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "concurrently -n server,web -c blue,green \"cd packages/server && npx tsx src/index.ts\" \"cd packages/web && npx next dev -p 3004\"",
+    "dev": "concurrently -n api,web -c blue,green \"cd packages/server && npx tsx src/index.ts\" \"cd packages/web && npx next dev -p 3004\"",
     "build": "pnpm -r build",
-    "start": "node packages/server/dist/index.js"
+    "start": "node packages/server/dist/index.js",
+    "seed": "pnpm --filter @agist/server exec tsx src/seed.ts",
+    "clean": "rm -rf ~/.agist/data.db"
   },
   "pnpm": {
     "onlyBuiltDependencies": ["better-sqlite3", "esbuild", "sharp", "unrs-resolver"]
