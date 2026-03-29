@@ -418,7 +418,7 @@ const sampleIssues = [
     agentId: pcEngineer.id,
     title: "Upgrade React to v19",
     description: "Upgrade the web app from React 18 to React 19 and resolve breaking changes.",
-    status: "todo",
+    status: "open",
     priority: "medium",
   }),
   issues.create({
@@ -434,7 +434,7 @@ const sampleIssues = [
     agentId: pcMarketing.id,
     title: "Launch Product Hunt campaign",
     description: "Plan and execute Product Hunt launch. Target top 5 product of the day.",
-    status: "backlog",
+    status: "open",
     priority: "high",
   }),
   issues.create({
@@ -450,7 +450,7 @@ const sampleIssues = [
     agentId: nxSeo.id,
     title: "Add structured data to product pages",
     description: "Implement Product schema.org JSON-LD on all product detail pages.",
-    status: "todo",
+    status: "open",
     priority: "medium",
   }),
   issues.create({
@@ -458,7 +458,7 @@ const sampleIssues = [
     agentId: vaEngineer.id,
     title: "Migrate from Redshift to BigQuery",
     description: "Plan and execute data warehouse migration. Estimate: 3 sprints.",
-    status: "backlog",
+    status: "open",
     priority: "high",
   }),
 ];
