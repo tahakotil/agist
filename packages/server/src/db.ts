@@ -65,7 +65,8 @@ export function saveDb(): void {
 // Helper to run a query and return all rows
 export function all<T = Record<string, unknown>>(sql: string, params: unknown[] = []): T[] {
   const stmt = getDb().prepare(sql);
-  if (params.length) stmt.bind(params);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if (params.length) stmt.bind(params as any);
   const results: T[] = [];
   while (stmt.step()) {
     results.push(stmt.getAsObject() as T);
@@ -82,7 +83,8 @@ export function get<T = Record<string, unknown>>(sql: string, params: unknown[] 
 
 // Helper to run a statement (INSERT/UPDATE/DELETE)
 export function run(sql: string, params: unknown[] = []): void {
-  getDb().run(sql, params);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getDb().run(sql, params as any);
 }
 
 export default { initDb, getDb, saveDb, all, get, run };

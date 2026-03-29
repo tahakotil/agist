@@ -21,7 +21,7 @@ export default function RoutinesPage() {
   // Fetch routines for all companies in parallel; flatten results
   const companyIds = companies?.map((c) => c.id) ?? []
 
-  const routineQueries = companyIds.map((cid) => ({
+  const _routineQueries = companyIds.map((cid) => ({
     queryKey: ["companies", cid, "routines"],
     queryFn: () => getCompanyRoutines(cid),
   }))
