@@ -95,19 +95,29 @@ async function processDueRoutines(): Promise<void> {
   }
 }
 
+let schedulerInterval: ReturnType<typeof setInterval> | null = null;
+
 export function startScheduler(): void {
   // Run immediately on start, then every 30 seconds
   processDueRoutines().catch((err: unknown) => {
     console.error('[scheduler] Initial tick error:', err);
   });
 
-  setInterval(() => {
+  schedulerInterval = setInterval(() => {
     processDueRoutines().catch((err: unknown) => {
       console.error('[scheduler] Tick error:', err);
     });
   }, 30_000);
 
   console.log('[scheduler] Started — checking routines every 30s');
+}
+
+export function stopScheduler(): void {
+  if (schedulerInterval !== null) {
+    clearInterval(schedulerInterval);
+    schedulerInterval = null;
+    console.log('[scheduler] Stopped.');
+  }
 }
 
 export function initializeNextRunAts(): void {
