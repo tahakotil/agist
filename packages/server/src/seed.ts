@@ -340,13 +340,119 @@ async function seed() {
   );
   console.log('[seed] Created 2 issues');
 
+  // ── Kotivon Company ──────────────────────────────────────────
+  const kotivonCompanyId = nanoid();
+  run(
+    `INSERT INTO companies (id, name, description, status, budget_monthly_cents, spent_monthly_cents, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      kotivonCompanyId,
+      'Kotivon',
+      'Digital agency — web development, SEO, automation services',
+      'active',
+      100000, // $1000/mo
+      0,
+      now.toISOString(),
+      now.toISOString(),
+    ]
+  );
+  console.log(`[seed] Created company: Kotivon (${kotivonCompanyId})`);
+
+  // ── kotivon-devops Agent ──────────────────────────────────────
+  const kotivonDevopsId = nanoid();
+  run(
+    `INSERT INTO agents (id, company_id, name, role, title, model, capabilities, status, reports_to, adapter_type, adapter_config, budget_monthly_cents, spent_monthly_cents, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      kotivonDevopsId,
+      kotivonCompanyId,
+      'kotivon-devops',
+      'specialist',
+      'Production Monitor & DevOps Agent',
+      'claude-haiku-4-5-20251001',
+      '["ssl-monitoring", "health-checks", "deployment-status", "alert-management"]',
+      'idle',
+      null,
+      'claude_local',
+      '{}',
+      0,
+      0,
+      now.toISOString(),
+      now.toISOString(),
+    ]
+  );
+  console.log(`[seed] Created agent: kotivon-devops (${kotivonDevopsId})`);
+
+  // ── Kotivon Monitoring Routines ──────────────────────────────
+  const apiHealthRoutineId = nanoid();
+  const sslMonitorRoutineId = nanoid();
+  const deploymentStatusRoutineId = nanoid();
+
+  run(
+    `INSERT INTO routines (id, company_id, agent_id, title, description, cron_expression, timezone, enabled, last_run_at, next_run_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      apiHealthRoutineId,
+      kotivonCompanyId,
+      kotivonDevopsId,
+      'API Health Check',
+      'Monitor client site API health — check endpoints, latency, errors',
+      '*/5 * * * *',
+      'UTC',
+      1,
+      null,
+      null,
+      now.toISOString(),
+      now.toISOString(),
+    ]
+  );
+
+  run(
+    `INSERT INTO routines (id, company_id, agent_id, title, description, cron_expression, timezone, enabled, last_run_at, next_run_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      sslMonitorRoutineId,
+      kotivonCompanyId,
+      kotivonDevopsId,
+      'SSL Certificate Monitoring',
+      'Check SSL certificate expiration dates for all client domains',
+      '0 9 * * *',
+      'UTC',
+      1,
+      null,
+      null,
+      now.toISOString(),
+      now.toISOString(),
+    ]
+  );
+
+  run(
+    `INSERT INTO routines (id, company_id, agent_id, title, description, cron_expression, timezone, enabled, last_run_at, next_run_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      deploymentStatusRoutineId,
+      kotivonCompanyId,
+      kotivonDevopsId,
+      'Deployment Status Check',
+      'Verify deployed services are running, check server resources, log health metrics',
+      '*/15 * * * *',
+      'UTC',
+      1,
+      null,
+      null,
+      now.toISOString(),
+      now.toISOString(),
+    ]
+  );
+  console.log('[seed] Created 3 Kotivon monitoring routines: API Health, SSL Monitor, Deployment Status');
+
   // ── Save to disk ──────────────────────────────────────────
   saveDb();
   console.log('[seed] Database saved to disk.');
   console.log('[seed] Done! Seeded:');
-  console.log('  - 1 company: Acme Corp');
-  console.log('  - 4 agents: Watchdog, Builder, Reviewer, Strategist');
-  console.log('  - 2 routines: Health Check, Morning Standup');
+  console.log('  - 2 companies: Acme Corp, Kotivon');
+  console.log('  - 5 agents: Watchdog, Builder, Reviewer, Strategist, kotivon-devops');
+  console.log('  - 5 routines: Health Check, Morning Standup + 3 Kotivon monitoring');
   console.log('  - 5 runs (3 Watchdog, 1 Builder, 1 Reviewer)');
   console.log('  - 2 issues');
   process.exit(0);
