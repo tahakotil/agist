@@ -2,13 +2,13 @@
 
 import { use, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { getCompany, getCompanyAgents, getCompanyRoutines, getCompanySignals, getAgentRuns, wakeAgent, updateAgent, type Company, type Agent, type Routine, type Signal, type Run } from "@/lib/api"
+import { getCompany, getCompanyAgents, getCompanyRoutines, getCompanySignals, getAgentRuns, wakeAgent, updateAgent, exportCompanyTemplate, type Company, type Agent, type Routine, type Signal, type Run } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { buttonVariants } from "@/components/ui/button"
+import { buttonVariants, Button } from "@/components/ui/button"
 import { OrgChart } from "@/components/org-chart"
 import { AgentCard } from "@/components/agent-card"
-import { Building2, Clock, DollarSign, Bot, ArrowLeft, Radio, CheckCircle2, XCircle, Loader2, PauseCircle } from "lucide-react"
+import { Building2, Clock, DollarSign, Bot, ArrowLeft, Radio, CheckCircle2, XCircle, Loader2, PauseCircle, Download } from "lucide-react"
 import { formatCost, relativeTime, cn } from "@/lib/utils"
 import Link from "next/link"
 import { toast } from "sonner"
@@ -43,6 +43,27 @@ export default function CompanyDetailPage({ params }: PageProps) {
     queryFn: () => getCompanySignals(id, { limit: 50 }),
     refetchInterval: 15_000,
   })
+
+  const [exporting, setExporting] = useState(false)
+
+  async function handleExport() {
+    setExporting(true)
+    try {
+      const template = await exportCompanyTemplate(id)
+      const blob = new Blob([JSON.stringify(template, null, 2)], { type: "application/json" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `${template.name.toLowerCase().replace(/\s+/g, "-")}-template.json`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success("Template exported")
+    } catch {
+      toast.error("Failed to export template")
+    } finally {
+      setExporting(false)
+    }
+  }
 
   async function handleWake(agentId: string) {
     try {
@@ -114,6 +135,20 @@ export default function CompanyDetailPage({ params }: PageProps) {
             <Badge className="bg-blue-500/15 text-blue-400 border border-blue-500/30 text-[11px] capitalize">
               {company.status}
             </Badge>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleExport}
+              disabled={exporting}
+              className="ml-auto border-slate-700 text-slate-400 hover:text-slate-200 hover:border-slate-500"
+            >
+              {exporting ? (
+                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+              ) : (
+                <Download className="h-3.5 w-3.5 mr-1.5" />
+              )}
+              Export Template
+            </Button>
           </div>
           {company.description && (
             <p className="text-slate-400 text-sm mt-2 max-w-2xl">{company.description}</p>

@@ -1,0 +1,78 @@
+{
+  "version": "1.0",
+  "name": "SaaS Monitoring Team",
+  "description": "Production monitoring, SEO tracking, and revenue analysis for a SaaS product",
+  "author": "Agist",
+  "url": "https://github.com/tahakotil/agist",
+  "company": {
+    "name": "SaaS Monitoring Team",
+    "description": "Production monitoring, SEO tracking, and revenue analysis for a SaaS product",
+    "budget_monthly_cents": 5000
+  },
+  "agents": [
+    {
+      "slug": "devops-monitor",
+      "name": "DevOps Monitor",
+      "role": "devops",
+      "title": "Infrastructure & Reliability Engineer",
+      "model": "claude-haiku-4-5",
+      "capabilities": "uptime monitoring, error rate tracking, deployment health checks, alert escalation",
+      "budget_monthly_cents": 2000,
+      "context_capsule": "I monitor production infrastructure health. I check API response times, error rates, and deployment status. When I detect anomalies I create issues immediately. My thresholds: p99 latency > 2s = warning, > 5s = critical. Error rate > 1% = warning, > 5% = critical."
+    },
+    {
+      "slug": "seo-tracker",
+      "name": "SEO Tracker",
+      "role": "seo",
+      "title": "Search Engine Optimization Analyst",
+      "model": "claude-haiku-4-5",
+      "capabilities": "keyword ranking tracking, competitor analysis, content gap identification, backlink monitoring",
+      "reports_to": "devops-monitor",
+      "budget_monthly_cents": 1500,
+      "context_capsule": "I track organic search performance and competitor movements. I monitor keyword rankings for our core terms weekly. I alert the team when rankings drop more than 3 positions or competitors launch new content targeting our keywords."
+    },
+    {
+      "slug": "revenue-analyst",
+      "name": "Revenue Analyst",
+      "role": "general",
+      "title": "Revenue & Growth Analyst",
+      "model": "claude-sonnet-4-6",
+      "capabilities": "MRR tracking, churn analysis, cohort analysis, revenue forecasting, pricing experiments",
+      "reports_to": "devops-monitor",
+      "budget_monthly_cents": 1500,
+      "context_capsule": "I analyze revenue metrics and growth KPIs. I track MRR, ARR, churn rate, LTV, and CAC. I produce weekly revenue reports and flag any anomalies in billing or subscription patterns. My goal is to identify growth opportunities and churn risks early."
+    }
+  ],
+  "routines": [
+    {
+      "agent_slug": "devops-monitor",
+      "title": "Production Health Check",
+      "cron_expression": "*/15 * * * *",
+      "timezone": "UTC"
+    },
+    {
+      "agent_slug": "devops-monitor",
+      "title": "Daily Infrastructure Report",
+      "cron_expression": "0 8 * * *",
+      "timezone": "UTC"
+    },
+    {
+      "agent_slug": "seo-tracker",
+      "title": "Weekly SEO Rankings Check",
+      "cron_expression": "0 9 * * 1",
+      "timezone": "UTC"
+    },
+    {
+      "agent_slug": "revenue-analyst",
+      "title": "Weekly Revenue Report",
+      "cron_expression": "0 10 * * 1",
+      "timezone": "UTC"
+    },
+    {
+      "agent_slug": "revenue-analyst",
+      "title": "Daily MRR Snapshot",
+      "cron_expression": "0 7 * * *",
+      "timezone": "UTC"
+    }
+  ]
+}

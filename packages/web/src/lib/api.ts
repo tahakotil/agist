@@ -673,3 +673,162 @@ export async function getAgentLatestOutput(agentId: string): Promise<RunOutput |
   const res = await api<{ output: RunOutput | null }>(`/agents/${agentId}/outputs/latest`);
   return res.output;
 }
+
+// ─── Templates ─────────────────────────────────────────────────────────────────
+
+export interface AgistTemplate {
+  version: '1.0';
+  name: string;
+  description: string;
+  author?: string;
+  url?: string;
+  company: {
+    name: string;
+    description?: string;
+    budget_monthly_cents?: number;
+  };
+  agents: TemplateAgent[];
+  routines: TemplateRoutine[];
+}
+
+export interface TemplateAgent {
+  slug: string;
+  name: string;
+  role: string;
+  title?: string;
+  model: string;
+  capabilities?: string;
+  reports_to?: string;
+  budget_monthly_cents?: number;
+  context_capsule?: string;
+}
+
+export interface TemplateRoutine {
+  agent_slug: string;
+  title: string;
+  cron_expression: string;
+  timezone?: string;
+}
+
+export async function exportCompanyTemplate(companyId: string): Promise<AgistTemplate> {
+  return api<AgistTemplate>(`/companies/${companyId}/export`);
+}
+
+export async function importTemplate(template: AgistTemplate): Promise<{ companyId: string }> {
+  return api<{ companyId: string }>('/companies/import', {
+    method: 'POST',
+    body: JSON.stringify(template),
+  });
+}
+
+// ── Governance: Approval Gates ────────────────────────────────────────────────
+
+export type ApprovalGateStatus = 'pending' | 'approved' | 'rejected';
+
+export interface ApprovalGate {
+  id: string;
+  companyId: string;
+  agentId: string;
+  agentName: string | null;
+  gateType: string;
+  title: string;
+  description: string;
+  payload: Record<string, unknown>;
+  status: ApprovalGateStatus;
+  decidedAt: string | null;
+  decidedBy: string | null;
+  createdAt: string;
+}
+
+export async function getCompanyGates(
+  companyId: string,
+  params?: { status?: string; page?: number; limit?: number }
+): Promise<{ gates: ApprovalGate[]; pagination: Pagination }> {
+  return api<{ gates: ApprovalGate[]; pagination: Pagination }>(
+    `/companies/${companyId}/gates${buildQs(params ?? {})}`
+  );
+}
+
+export async function getPendingGates(
+  companyId: string
+): Promise<{ gates: ApprovalGate[]; total: number }> {
+  return api<{ gates: ApprovalGate[]; total: number }>(
+    `/companies/${companyId}/gates/pending`
+  );
+}
+
+export async function createGate(
+  companyId: string,
+  body: {
+    agentId: string;
+    gateType: string;
+    title: string;
+    description: string;
+    payload?: Record<string, unknown>;
+  }
+): Promise<{ gate: ApprovalGate }> {
+  return api<{ gate: ApprovalGate }>(`/companies/${companyId}/gates`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export async function approveGate(
+  companyId: string,
+  gateId: string,
+  decidedBy = 'human'
+): Promise<{ gate: ApprovalGate }> {
+  return api<{ gate: ApprovalGate }>(
+    `/companies/${companyId}/gates/${gateId}/approve`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ decidedBy }),
+    }
+  );
+}
+
+export async function rejectGate(
+  companyId: string,
+  gateId: string,
+  decidedBy = 'human'
+): Promise<{ gate: ApprovalGate }> {
+  return api<{ gate: ApprovalGate }>(
+    `/companies/${companyId}/gates/${gateId}/reject`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ decidedBy }),
+    }
+  );
+}
+
+// ── Governance: Audit Log ─────────────────────────────────────────────────────
+
+export interface AuditLogEntry {
+  id: string;
+  companyId: string | null;
+  agentId: string | null;
+  agentName: string | null;
+  action: string;
+  detail: Record<string, unknown>;
+  actor: string;
+  createdAt: string;
+}
+
+export async function getAuditLog(
+  companyId: string,
+  params?: { action?: string; agent_id?: string; limit?: number; page?: number }
+): Promise<{ entries: AuditLogEntry[]; pagination: Pagination }> {
+  return api<{ entries: AuditLogEntry[]; pagination: Pagination }>(
+    `/companies/${companyId}/audit${buildQs(params ?? {})}`
+  );
+}
+
+// ── Governance: Pause / Resume ────────────────────────────────────────────────
+
+export async function pauseAgent(agentId: string): Promise<{ agent: Agent }> {
+  return api<{ agent: Agent }>(`/agents/${agentId}/pause`, { method: 'POST' });
+}
+
+export async function resumeAgent(agentId: string): Promise<{ agent: Agent }> {
+  return api<{ agent: Agent }>(`/agents/${agentId}/resume`, { method: 'POST' });
+}

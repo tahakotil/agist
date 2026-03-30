@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { useQuery } from "@tanstack/react-query"
 import {
   LayoutDashboard,
   Building2,
@@ -14,8 +15,12 @@ import {
   Zap,
   Folder,
   FolderOpen,
+  FileCode2,
+  ShieldCheck,
+  ClipboardList,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { getCompanies, getPendingGates } from "@/lib/api"
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -26,6 +31,9 @@ const navItems = [
   { href: "/runs", label: "Runs", icon: Play },
   { href: "/issues", label: "Issues", icon: AlertCircle },
   { href: "/workspace", label: "Workspace", icon: FolderOpen },
+  { href: "/templates", label: "Templates", icon: FileCode2 },
+  { href: "/gates", label: "Gates", icon: ShieldCheck },
+  { href: "/audit", label: "Audit Log", icon: ClipboardList },
 ]
 
 const bottomItems = [
@@ -35,6 +43,22 @@ const bottomItems = [
 
 export function Sidebar({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname()
+
+  const { data: companiesData } = useQuery({
+    queryKey: ["companies"],
+    queryFn: () => getCompanies({ limit: 100 }),
+    staleTime: 60_000,
+  })
+  const firstCompanyId = companiesData?.companies?.[0]?.id
+
+  const { data: pendingGatesData } = useQuery({
+    queryKey: ["gates", firstCompanyId, "pending"],
+    queryFn: () => getPendingGates(firstCompanyId!),
+    enabled: !!firstCompanyId,
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  })
+  const pendingCount = pendingGatesData?.total ?? 0
 
   function isActive(href: string) {
     if (href === "/") return pathname === "/"
@@ -77,7 +101,12 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
                 isActive(href) ? "text-blue-400" : "text-slate-500"
               )}
             />
-            {label}
+            <span className="flex-1">{label}</span>
+            {href === "/gates" && pendingCount > 0 && (
+              <span className="ml-auto text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full px-1.5 py-0.5 leading-none">
+                {pendingCount}
+              </span>
+            )}
           </Link>
         ))}
       </nav>
