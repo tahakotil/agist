@@ -1,17 +1,21 @@
 "use client"
 
 import { useQuery, useQueryClient } from "@tanstack/react-query"
+import Link from "next/link"
 import {
   getAgents,
   getRecentRuns,
   getDashboardStats,
   getDashboardCosts,
+  getCompanies,
+  getCompanyDigest,
   wakeAgent,
   updateAgent,
   type Agent,
   type Run,
   type DashboardStats,
   type AgentDailyCost,
+  type DigestRow,
 } from "@/lib/api"
 import { StatCard } from "@/components/stat-card"
 import { AgentCard } from "@/components/agent-card"
@@ -27,7 +31,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { relativeTime, formatDuration, formatCost, cn } from "@/lib/utils"
-import { Bot, Play, CheckCircle, DollarSign, AlertTriangle } from "lucide-react"
+import { Bot, Play, CheckCircle, DollarSign, AlertTriangle, BookOpen, ArrowRight } from "lucide-react"
 import { toast } from "sonner"
 
 const RUN_STATUS_BADGE: Record<string, string> = {
@@ -60,6 +64,20 @@ export default function DashboardPage() {
   const { data: agentCosts } = useQuery<AgentDailyCost[]>({
     queryKey: ["dashboard-costs"],
     queryFn: () => getDashboardCosts(7),
+  })
+
+  const { data: companiesData } = useQuery({
+    queryKey: ["companies"],
+    queryFn: () => getCompanies({ limit: 1 }),
+    staleTime: 60_000,
+  })
+  const firstCompanyId = companiesData?.companies?.[0]?.id
+
+  const { data: todayDigest } = useQuery<DigestRow | null>({
+    queryKey: ["digest", firstCompanyId, "today"],
+    queryFn: () => getCompanyDigest(firstCompanyId!),
+    enabled: !!firstCompanyId,
+    staleTime: 5 * 60_000,
   })
 
   async function handleWake(id: string) {
@@ -136,6 +154,68 @@ export default function DashboardPage() {
           loading={statsLoading && !isOffline}
         />
       </div>
+
+      {/* Today's Digest summary card */}
+      {firstCompanyId && (
+        <Card className="bg-slate-900 border-slate-800">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base font-semibold text-slate-100 flex items-center gap-2">
+                <BookOpen className="h-4 w-4 text-violet-400" />
+                Today&apos;s Digest
+              </CardTitle>
+              <Link
+                href="/digest"
+                className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-300 transition-colors"
+              >
+                View full digest <ArrowRight className="h-3 w-3" />
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {todayDigest ? (
+              <div className="flex flex-wrap gap-6">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-2xl font-bold text-slate-100">{todayDigest.digest.totalRuns}</span>
+                  <span className="text-xs text-slate-500">Total runs</span>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-2xl font-bold text-emerald-400">{todayDigest.digest.successfulRuns}</span>
+                  <span className="text-xs text-slate-500">Successful</span>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-2xl font-bold text-red-400">{todayDigest.digest.failedRuns}</span>
+                  <span className="text-xs text-slate-500">Failed</span>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-2xl font-bold text-amber-400">{formatCost(todayDigest.digest.totalCostCents / 100)}</span>
+                  <span className="text-xs text-slate-500">Spent today</span>
+                </div>
+                {todayDigest.digest.pendingApprovals > 0 && (
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-2xl font-bold text-orange-400">{todayDigest.digest.pendingApprovals}</span>
+                    <span className="text-xs text-slate-500">Pending approvals</span>
+                  </div>
+                )}
+                {todayDigest.digest.actionItems.length > 0 && (
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-2xl font-bold text-blue-400">{todayDigest.digest.actionItems.length}</span>
+                    <span className="text-xs text-slate-500">Action items</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 text-sm text-slate-500">
+                <BookOpen className="h-4 w-4 text-slate-700" />
+                <span>No digest for today yet. Digests are auto-generated at 23:00 UTC or you can</span>
+                <Link href="/digest" className="text-blue-400 hover:text-blue-300 underline underline-offset-2">
+                  generate one now
+                </Link>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <section>
         <div className="flex items-center justify-between mb-4">
