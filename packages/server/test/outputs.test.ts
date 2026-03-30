@@ -309,6 +309,27 @@ describe('Outputs API', () => {
     expect(summary[0].status).toBe('FAIL');
   });
 
+  it('GET outputs summary returns exactly one row per agent even with same-timestamp outputs', async () => {
+    const db = getActiveDb();
+    const now = new Date().toISOString();
+    // Directly insert two outputs for the same agent with identical created_at
+    db.run(
+      `INSERT INTO run_outputs (id, run_id, agent_id, output_type, data, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+      [nanoid(), runId, agentId, 'health', JSON.stringify({ status: 'PASS' }), now]
+    );
+    db.run(
+      `INSERT INTO run_outputs (id, run_id, agent_id, output_type, data, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+      [nanoid(), runId, agentId, 'analytics', JSON.stringify({ status: 'DEGRADED' }), now]
+    );
+
+    const res = await app.request(`/api/companies/${companyId}/outputs/summary`);
+    expect(res.status).toBe(200);
+    const summary = (await res.json() as Record<string, unknown>).summary as Array<Record<string, unknown>>;
+    // Must be exactly 1 row for the agent despite duplicate timestamps
+    expect(summary).toHaveLength(1);
+    expect(summary[0].agentId).toBe(agentId);
+  });
+
   it('GET outputs summary for nonexistent company → 404', async () => {
     const res = await app.request(`/api/companies/ghost-company/outputs/summary`);
     expect(res.status).toBe(404);
