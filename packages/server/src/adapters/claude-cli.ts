@@ -102,12 +102,17 @@ export const claudeCliAdapter: RunAdapter = {
       }
     }
 
+    const addDirArgs: string[] = ['--add-dir', skillDir]
+    for (const dir of (options.extraDirs ?? [])) {
+      addDirArgs.push('--add-dir', dir)
+    }
+
     const args = [
       '--model', model,
       '--print',
       '--verbose',
       '--output-format', 'stream-json',
-      '--add-dir', skillDir,
+      ...addDirArgs,
       '-p', effectivePrompt,
     ]
 
