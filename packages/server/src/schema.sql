@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS agents (
   id                    TEXT PRIMARY KEY,
   company_id            TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
   name                  TEXT NOT NULL,
+  slug                  TEXT,
   role                  TEXT NOT NULL DEFAULT 'worker',
   title                 TEXT NOT NULL DEFAULT '',
   model                 TEXT NOT NULL DEFAULT 'claude-opus-4-5',
@@ -38,6 +39,7 @@ CREATE TABLE IF NOT EXISTS agents (
 CREATE INDEX IF NOT EXISTS idx_agents_company_id ON agents(company_id);
 CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status);
 CREATE INDEX IF NOT EXISTS idx_agents_reports_to ON agents(reports_to);
+CREATE INDEX IF NOT EXISTS idx_agents_slug ON agents(slug);
 
 CREATE TABLE IF NOT EXISTS routines (
   id               TEXT PRIMARY KEY,
@@ -67,6 +69,7 @@ CREATE TABLE IF NOT EXISTS runs (
   status         TEXT NOT NULL DEFAULT 'queued',
   model          TEXT NOT NULL DEFAULT '',
   source         TEXT NOT NULL DEFAULT 'manual',
+  chain_depth    INTEGER NOT NULL DEFAULT 0,
   started_at     TEXT,
   finished_at    TEXT,
   exit_code      INTEGER,
@@ -138,3 +141,31 @@ CREATE TABLE IF NOT EXISTS webhooks (
 
 CREATE INDEX IF NOT EXISTS idx_webhooks_company_id ON webhooks(company_id);
 CREATE INDEX IF NOT EXISTS idx_webhooks_enabled ON webhooks(enabled);
+
+CREATE TABLE IF NOT EXISTS run_outputs (
+  id          TEXT PRIMARY KEY,
+  run_id      TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+  agent_id    TEXT NOT NULL,
+  output_type TEXT NOT NULL DEFAULT 'report',
+  data        TEXT NOT NULL,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_run_outputs_run ON run_outputs(run_id);
+CREATE INDEX IF NOT EXISTS idx_run_outputs_agent ON run_outputs(agent_id);
+
+CREATE TABLE IF NOT EXISTS signals (
+  id                  TEXT PRIMARY KEY,
+  company_id          TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  source_agent_id     TEXT NOT NULL,
+  source_agent_name   TEXT NOT NULL DEFAULT '',
+  signal_type         TEXT NOT NULL,
+  title               TEXT NOT NULL,
+  payload             TEXT NOT NULL DEFAULT '{}',
+  consumed_by         TEXT NOT NULL DEFAULT '[]',
+  created_at          TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_signals_company ON signals(company_id);
+CREATE INDEX IF NOT EXISTS idx_signals_type ON signals(signal_type);
+CREATE INDEX IF NOT EXISTS idx_signals_created_at ON signals(created_at);
