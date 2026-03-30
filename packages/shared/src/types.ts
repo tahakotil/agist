@@ -14,7 +14,7 @@ export interface PaginatedResponse<T> {
 }
 
 export type CompanyStatus = "active" | "paused" | "archived";
-export type AgentStatus = "idle" | "running" | "paused" | "error";
+export type AgentStatus = "idle" | "running" | "paused" | "error" | "budget_exceeded";
 export type AgentRole =
   | "ceo"
   | "engineer"
@@ -144,4 +144,31 @@ export interface Issue {
   priority: IssuePriority;
   createdAt: string;
   updatedAt: string;
+}
+
+export type ApprovalGateStatus = "pending" | "approved" | "rejected";
+
+export interface ApprovalGate {
+  id: string;
+  companyId: string;
+  agentId: string;
+  agentName?: string;
+  gateType: string;
+  title: string;
+  description: string;
+  payload: Record<string, unknown>;
+  status: ApprovalGateStatus;
+  decidedAt: string | null;
+  decidedBy: string;
+  createdAt: string;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  companyId: string | null;
+  agentId: string | null;
+  action: string;
+  detail: Record<string, unknown>;
+  actor: string;
+  createdAt: string;
 }

@@ -36,7 +36,7 @@ export const AgentRoleSchema = z.enum([
   "general",
 ]);
 
-export const AgentStatusSchema = z.enum(["idle", "running", "paused", "error"]);
+export const AgentStatusSchema = z.enum(["idle", "running", "paused", "error", "budget_exceeded"]);
 
 export const CreateAgentSchema = z.object({
   companyId: z.string().min(1),
@@ -169,3 +169,22 @@ export const UpdateIssueSchema = z.object({
 
 export type CreateIssueInput = z.infer<typeof CreateIssueSchema>;
 export type UpdateIssueInput = z.infer<typeof UpdateIssueSchema>;
+
+// ─── ApprovalGate ─────────────────────────────────────────────────────────────
+
+export const ApprovalGateStatusSchema = z.enum(["pending", "approved", "rejected"]);
+
+export const CreateApprovalGateSchema = z.object({
+  agentId: z.string().min(1),
+  gateType: z.string().min(1).max(100),
+  title: z.string().min(1).max(500),
+  description: z.string().max(5000).optional().default(''),
+  payload: z.record(z.unknown()).optional().default({}),
+});
+
+export const DecideApprovalGateSchema = z.object({
+  decidedBy: z.string().max(255).optional().default('human'),
+});
+
+export type CreateApprovalGateInput = z.infer<typeof CreateApprovalGateSchema>;
+export type DecideApprovalGateInput = z.infer<typeof DecideApprovalGateSchema>;
