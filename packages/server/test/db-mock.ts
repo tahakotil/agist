@@ -64,7 +64,8 @@ function getDb(): Database {
 function all<T = Record<string, unknown>>(sql: string, params: unknown[] = []): T[] {
   const db = getDb();
   const stmt = db.prepare(sql);
-  if (params.length) stmt.bind(params);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if (params.length) stmt.bind(params as any);
   const results: T[] = [];
   while (stmt.step()) {
     results.push(stmt.getAsObject() as T);
@@ -79,7 +80,8 @@ function get<T = Record<string, unknown>>(sql: string, params: unknown[] = []): 
 }
 
 function runSql(sql: string, params: unknown[] = []): void {
-  getDb().run(sql, params);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getDb().run(sql, params as any);
 }
 
 /**

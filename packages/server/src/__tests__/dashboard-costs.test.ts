@@ -1,8 +1,18 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { createTestDb, setActiveDb, createDbMock } from '../../test/db-mock.js'
-import type { Database } from 'sql.js'
 
-vi.mock('../db.js', () => createDbMock())
+// ─── Inline mock for db ────────────────────────────────────────────────────────
+// We use a simple closure so we can control what `all` returns per-test.
+let _allRows: Record<string, unknown>[] = []
+
+vi.mock('../db.js', () => ({
+  get: vi.fn(),
+  all: vi.fn((_sql: string, _params?: unknown[]) => _allRows),
+  run: vi.fn(),
+  initDb: async () => ({}),
+  saveDb: () => {},
+  getDb: () => ({}),
+}))
+
 vi.mock('../sse.js', () => ({ broadcast: () => {}, subscribe: () => () => {}, sseRouter: { get: () => {} } }))
 vi.mock('../ws.js', () => ({ pushToAgent: () => {}, initWebSocketServer: () => {}, handleUpgrade: () => {} }))
 vi.mock('../adapter.js', () => ({ spawnClaudeLocal: async () => {} }))
@@ -18,41 +28,14 @@ async function buildApp() {
   return app
 }
 
-function seedData(db: Database) {
-  // Insert a company
-  db.run(
-    `INSERT INTO companies (id, name, description, status, budget_monthly_cents, spent_monthly_cents, created_at, updated_at)
-     VALUES ('comp1', 'Acme', '', 'active', 0, 0, datetime('now'), datetime('now'))`
-  )
-  // Insert an agent
-  db.run(
-    `INSERT INTO agents (id, company_id, name, role, title, model, capabilities, status,
-       reports_to, adapter_type, adapter_config, budget_monthly_cents, spent_monthly_cents, created_at, updated_at)
-     VALUES ('agent1', 'comp1', 'Builder', 'dev', '', 'claude-sonnet-4-6', '[]', 'idle', NULL,
-       'claude_local', '{}', 0, 0, datetime('now'), datetime('now'))`
-  )
-  // Insert runs with cost_cents in last 7 days
-  db.run(
-    `INSERT INTO runs (id, agent_id, company_id, routine_id, status, model, source,
-       token_input, token_output, cost_cents, started_at, finished_at, created_at)
-     VALUES ('run1', 'agent1', 'comp1', NULL, 'completed', 'claude-sonnet-4-6', 'manual',
-       100, 50, 150, datetime('now', '-1 day'), datetime('now', '-1 day'), datetime('now', '-1 day'))`
-  )
-  db.run(
-    `INSERT INTO runs (id, agent_id, company_id, routine_id, status, model, source,
-       token_input, token_output, cost_cents, started_at, finished_at, created_at)
-     VALUES ('run2', 'agent1', 'comp1', NULL, 'completed', 'claude-sonnet-4-6', 'manual',
-       200, 100, 300, datetime('now', '-2 days'), datetime('now', '-2 days'), datetime('now', '-2 days'))`
-  )
-}
-
 describe('GET /api/dashboard/costs', () => {
-  beforeEach(async () => {
-    const db = await createTestDb()
-    setActiveDb(db)
+  beforeEach(() => {
+    vi.resetModules()
+    _allRows = []
   })
 
   it('returns empty array when no runs exist', async () => {
+    _allRows = []
     const app = await buildApp()
     const res = await app.request('/api/dashboard/costs')
     expect(res.status).toBe(200)
@@ -62,9 +45,15 @@ describe('GET /api/dashboard/costs', () => {
   })
 
   it('returns cost breakdown by agent', async () => {
-    const { getActiveDb } = await import('../../test/db-mock.js')
-    seedData(getActiveDb())
-
+    _allRows = [
+      {
+        date: '2026-03-29',
+        agent_id: 'agent1',
+        agent_name: 'Builder',
+        model: 'claude-sonnet-4-6',
+        cost_cents: 450,
+      },
+    ]
     const app = await buildApp()
     const res = await app.request('/api/dashboard/costs?days=7')
     expect(res.status).toBe(200)
@@ -79,18 +68,23 @@ describe('GET /api/dashboard/costs', () => {
     expect(typeof entry.costCents).toBe('number')
   })
 
-  it('uses the days query param', async () => {
-    const { getActiveDb } = await import('../../test/db-mock.js')
-    seedData(getActiveDb())
-
+  it('maps snake_case row fields to camelCase response', async () => {
+    _allRows = [
+      {
+        date: '2026-03-28',
+        agent_id: 'agentX',
+        agent_name: 'Writer',
+        model: 'claude-haiku-4-5-20251001',
+        cost_cents: 80,
+      },
+    ]
     const app = await buildApp()
-    // Only ask for 1 day — should only return run1 (1 day ago)
-    const res = await app.request('/api/dashboard/costs?days=1')
+    const res = await app.request('/api/dashboard/costs?days=7')
     expect(res.status).toBe(200)
     const body = await res.json() as { costs: Array<Record<string, unknown>> }
-    // run2 is 2 days ago so should be excluded
-    // run1 is 1 day ago, borderline — SQLite datetime comparison
-    // We just check the structure is correct
-    expect(Array.isArray(body.costs)).toBe(true)
+    const entry = body.costs[0]
+    expect(entry.agentId).toBe('agentX')
+    expect(entry.agentName).toBe('Writer')
+    expect(entry.costCents).toBe(80)
   })
 })
