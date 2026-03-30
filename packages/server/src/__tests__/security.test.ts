@@ -182,7 +182,7 @@ describe('AGIST_AUTH_DISABLED bypass', () => {
   })
 
   it('when env is not "true", auth should be enforced', () => {
-    const authDisabled = 'false'
+    const authDisabled: string = 'false'
     const role = authDisabled === 'true' ? 'admin' : null
     expect(role).toBeNull()
   })

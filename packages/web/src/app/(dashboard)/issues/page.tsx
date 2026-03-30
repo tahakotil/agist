@@ -1,7 +1,9 @@
 "use client"
 
 import { useQuery } from "@tanstack/react-query"
-import { getCompanies, getCompanyIssues, type Company, type Issue } from "@/lib/api"
+import { useSearchParams } from "next/navigation"
+import { getCompanies, getCompanyIssues, type Company, type Issue, type Pagination } from "@/lib/api"
+import { Paginator } from "@/components/paginator"
 import { Badge } from "@/components/ui/badge"
 import {
   Table,
@@ -29,25 +31,42 @@ const PRIORITY_ICON: Record<string, React.ReactNode> = {
   low: <Info className="h-4 w-4 text-blue-400" />,
 }
 
+const PAGE_SIZE = 20
+
 export default function IssuesPage() {
-  const { data: companies } = useQuery<Company[]>({
-    queryKey: ["companies"],
-    queryFn: () => getCompanies().then((r) => r.companies),
+  const searchParams = useSearchParams()
+  const page = Number(searchParams.get("page") ?? 1)
+  const limit = Number(searchParams.get("limit") ?? PAGE_SIZE)
+
+  const { data: companiesData } = useQuery<{ companies: Company[]; pagination: Pagination }>({
+    queryKey: ["companies", { page: 1, limit: 100 }],
+    queryFn: () => getCompanies({ page: 1, limit: 100 }),
   })
+  const companies = companiesData?.companies ?? []
+  const companyIds = companies.map((c) => c.id)
 
-  const companyIds = companies?.map((c) => c.id) ?? []
-
+  // Fetch all issues across companies (server doesn't have global issues endpoint yet)
+  // We fetch one company at a time and merge; pagination is client-side here
   const { data: issues, isLoading } = useQuery<Issue[]>({
     queryKey: ["issues", "all", companyIds.join(",")],
     queryFn: async () => {
       if (companyIds.length === 0) return []
-      const results = await Promise.all(companyIds.map((cid) => getCompanyIssues(cid).then((r) => r.issues)))
+      const results = await Promise.all(
+        companyIds.map((cid) => getCompanyIssues(cid, { limit: 100 }).then((r) => r.issues))
+      )
       return results.flat().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     },
     enabled: companyIds.length > 0,
   })
 
-  const openIssues = issues?.filter((i) => i.status !== "resolved" && i.status !== "closed") ?? []
+  // Client-side pagination over merged issues
+  const allIssues = issues ?? []
+  const total = allIssues.length
+  const totalPages = Math.max(1, Math.ceil(total / limit))
+  const pagedIssues = allIssues.slice((page - 1) * limit, page * limit)
+  const clientPagination: Pagination = { page, limit, total, totalPages }
+
+  const openIssues = allIssues.filter((i) => i.status !== "resolved" && i.status !== "closed")
 
   return (
     <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
@@ -91,8 +110,8 @@ export default function IssuesPage() {
                   ))}
                 </TableRow>
               ))
-            ) : issues && issues.length > 0 ? (
-              issues.map((issue) => (
+            ) : pagedIssues.length > 0 ? (
+              pagedIssues.map((issue) => (
                 <TableRow
                   key={issue.id}
                   className={cn(
@@ -165,6 +184,7 @@ export default function IssuesPage() {
           </TableBody>
         </Table>
       </div>
+      {total > 0 && <Paginator pagination={clientPagination} />}
     </div>
   )
 }

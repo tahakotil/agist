@@ -1,7 +1,9 @@
 "use client"
 
 import { useQuery } from "@tanstack/react-query"
-import { getRecentRuns, type Run } from "@/lib/api"
+import { useSearchParams } from "next/navigation"
+import { getRuns, type Run, type Pagination } from "@/lib/api"
+import { Paginator } from "@/components/paginator"
 import {
   Table,
   TableBody,
@@ -32,10 +34,16 @@ const STATUS_ICON: Record<string, React.ReactNode> = {
 }
 
 export default function RunsPage() {
-  const { data: runs, isLoading } = useQuery<Run[]>({
-    queryKey: ["runs", "recent"],
-    queryFn: () => getRecentRuns(100),
+  const searchParams = useSearchParams()
+  const page = Number(searchParams.get("page") ?? 1)
+  const limit = Number(searchParams.get("limit") ?? 20)
+
+  const { data, isLoading } = useQuery<{ runs: Run[]; pagination: Pagination }>({
+    queryKey: ["runs", { page, limit }],
+    queryFn: () => getRuns({ page, limit }),
   })
+  const runs = data?.runs
+  const pagination = data?.pagination
 
   return (
     <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
@@ -132,6 +140,7 @@ export default function RunsPage() {
           </TableBody>
         </Table>
       </div>
+      {pagination && <Paginator pagination={pagination} />}
     </div>
   )
 }

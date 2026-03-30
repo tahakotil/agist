@@ -47,7 +47,6 @@ export default function CompaniesPage() {
       await createCompany({ name: name.trim(), description: description.trim() || undefined })
       toast.success("Company created")
       queryClient.invalidateQueries({ queryKey: ["companies"] })
-    queryClient.invalidateQueries({ queryKey: ["companies", { page, limit }] })
       setOpen(false)
       setName("")
       setDescription("")
