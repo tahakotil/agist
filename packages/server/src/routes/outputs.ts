@@ -93,7 +93,7 @@ outputsRouter.get('/api/agents/:agentId/outputs', (c) => {
   }
 
   const rows = all<RunOutputRow>(
-    `SELECT * FROM run_outputs WHERE agent_id = ? ORDER BY created_at DESC LIMIT ?`,
+    `SELECT * FROM run_outputs WHERE agent_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?`,
     [agentId, limit]
   );
 
@@ -110,7 +110,7 @@ outputsRouter.get('/api/agents/:agentId/outputs/latest', (c) => {
   }
 
   const row = get<RunOutputRow>(
-    `SELECT * FROM run_outputs WHERE agent_id = ? ORDER BY created_at DESC LIMIT 1`,
+    `SELECT * FROM run_outputs WHERE agent_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`,
     [agentId]
   );
 
@@ -131,13 +131,15 @@ outputsRouter.get('/api/companies/:cid/outputs/summary', (c) => {
   }
 
   // Get latest output per agent for agents in this company
+  // Use rowid (auto-increment insertion order) to avoid duplicate rows when
+  // two outputs share the same created_at timestamp.
   const rows = all<RunOutputRow & { agent_name: string }>(
     `SELECT ro.*, a.name as agent_name
      FROM run_outputs ro
      JOIN agents a ON a.id = ro.agent_id
      WHERE a.company_id = ?
-       AND ro.created_at = (
-         SELECT MAX(ro2.created_at)
+       AND ro.rowid = (
+         SELECT MAX(ro2.rowid)
          FROM run_outputs ro2
          WHERE ro2.agent_id = ro.agent_id
        )
