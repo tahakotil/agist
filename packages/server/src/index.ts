@@ -31,6 +31,7 @@ import { templatesRouter } from './routes/templates.js';
 import { gatesRouter } from './routes/gates.js';
 import { auditRouter } from './routes/audit.js';
 import { capsulesRouter } from './routes/capsules.js';
+import { digestRouter } from './routes/digest.js';
 import { sseRouter } from './sse.js';
 import { initWebSocketServer, handleUpgrade, closeAllConnections } from './ws.js';
 import { startScheduler, initializeNextRunAts, stopScheduler } from './scheduler.js';
@@ -111,6 +112,7 @@ app.route('/', templatesRouter);
 app.route('/', gatesRouter);
 app.route('/', auditRouter);
 app.route('/', capsulesRouter);
+app.route('/', digestRouter);
 app.route('/', sseRouter);
 
 // Serve static files from web build if available (production)

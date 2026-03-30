@@ -18,6 +18,7 @@ import {
   FileCode2,
   ShieldCheck,
   ClipboardList,
+  BookOpen,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getCompanies, getPendingGates } from "@/lib/api"
@@ -34,6 +35,7 @@ const navItems = [
   { href: "/templates", label: "Templates", icon: FileCode2 },
   { href: "/gates", label: "Gates", icon: ShieldCheck },
   { href: "/audit", label: "Audit Log", icon: ClipboardList },
+  { href: "/digest", label: "Digest", icon: BookOpen },
 ]
 
 const bottomItems = [

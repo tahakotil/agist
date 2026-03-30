@@ -103,6 +103,17 @@ export async function createTestDb(): Promise<Database> {
       PRIMARY KEY (capsule_id, version)
     )`,
     "CREATE INDEX IF NOT EXISTS idx_capsule_versions_id ON capsule_versions(capsule_id)",
+    // Daily digests v1.7
+    `CREATE TABLE IF NOT EXISTS digests (
+      id         TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      date       TEXT NOT NULL,
+      content    TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(company_id, date)
+    )`,
+    "CREATE INDEX IF NOT EXISTS idx_digests_company ON digests(company_id)",
+    "CREATE INDEX IF NOT EXISTS idx_digests_date ON digests(date)",
   ]
   for (const sql of migrations) {
     try { db.run(sql) } catch { /* column or table already exists */ }
