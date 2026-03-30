@@ -1,0 +1,11 @@
+{$DOMAIN:localhost} {
+  handle /api/* {
+    reverse_proxy agist:4400
+  }
+  handle /ws {
+    reverse_proxy agist:4400
+  }
+  handle {
+    reverse_proxy agist:3004
+  }
+}

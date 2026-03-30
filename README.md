@@ -53,6 +53,17 @@ You define goals → Agist schedules agents → Agents do the work → You revie
 
 ## Quickstart
 
+### Option 1: npx (fastest)
+
+```bash
+npx agist setup   # interactive wizard — sets ports, API keys, data dir
+npx agist start   # starts backend + frontend
+```
+
+Open **http://localhost:3004** — that's it.
+
+### Option 2: Git clone
+
 ```bash
 git clone https://github.com/tahakotil/agist.git
 cd agist
@@ -61,11 +72,73 @@ pnpm seed    # load demo data (optional)
 pnpm dev     # opens dashboard at localhost:3004
 ```
 
-Open **http://localhost:3004** — that's it.
-
-This starts both the API server (`:4400`) and the dashboard (`:3004`) with a single command.
-
 > **Requirements:** Node.js 20+, pnpm 9+
+
+### Option 3: Docker
+
+```bash
+# Clone and start with Docker Compose (includes automatic HTTPS via Caddy)
+git clone https://github.com/tahakotil/agist.git
+cd agist
+docker compose up -d
+```
+
+Access at **http://localhost** (Caddy handles routing and HTTPS automatically).
+
+For a custom domain with automatic TLS:
+```bash
+DOMAIN=agents.yourdomain.com docker compose up -d
+```
+
+---
+
+## CLI Reference
+
+The `agist` CLI manages your local installation:
+
+```bash
+npx agist setup    # interactive setup wizard
+npx agist start    # start backend + frontend
+npx agist status   # show server health, agent fleet, KPIs
+npx agist logs <agentId>   # stream live logs for an agent
+npx agist logs "*"          # stream all agent logs
+```
+
+---
+
+## API Authentication
+
+By default auth is disabled for local development. To enable:
+
+```bash
+# Set in environment or .env
+AGIST_AUTH_DISABLED=false
+```
+
+All API requests must then include the `X-Api-Key` header:
+
+```bash
+curl http://localhost:4400/api/agents \
+  -H "X-Api-Key: agist_<your-key>"
+```
+
+The API key is generated during `npx agist setup` and stored in `~/.agist/config.json`. The dashboard reads it automatically from `localStorage`.
+
+---
+
+## Configuration
+
+All configuration via environment variables (see `.env.example` for full list):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `4400` | Backend API port |
+| `NODE_ENV` | `development` | Environment |
+| `AGIST_AUTH_DISABLED` | `true` | Disable API key auth (dev only) |
+| `CORS_ORIGINS` | `http://localhost:3004` | Allowed CORS origins |
+| `LOG_LEVEL` | `info` | Logging level (debug/info/warn/error) |
+| `ANTHROPIC_API_KEY` | — | Anthropic API key for Claude |
+| `RUN_TTL_DAYS` | `30` | Auto-delete runs older than N days |
 
 ---
 
@@ -175,6 +248,14 @@ This starts both the API server (`:4400`) and the dashboard (`:3004`) with a sin
 ```
 agist/
 ├── packages/
+│   ├── cli/             # npx agist CLI
+│   │   └── src/
+│   │       ├── index.ts
+│   │       └── commands/
+│   │           ├── setup.ts    # Interactive setup wizard
+│   │           ├── start.ts    # Start backend + frontend
+│   │           ├── status.ts   # Health + agent fleet status
+│   │           └── logs.ts     # Live log streaming (WebSocket)
 │   ├── shared/          # Types, validators, constants
 │   │   └── src/
 │   │       ├── types.ts
@@ -197,6 +278,7 @@ agist/
 │   │       └── routes/
 │   │           ├── companies.ts
 │   │           ├── agents.ts
+│   │           ├── projects.ts
 │   │           ├── routines.ts
 │   │           ├── runs.ts
 │   │           ├── issues.ts
@@ -208,6 +290,7 @@ agist/
 │           │   │   ├── page.tsx     # Status dashboard
 │           │   │   ├── agents/
 │           │   │   ├── companies/
+│           │   │   ├── projects/    # Project management
 │           │   │   ├── routines/
 │           │   │   ├── runs/
 │           │   │   ├── issues/
@@ -222,6 +305,10 @@ agist/
 │           │   └── stat-card.tsx
 │           └── lib/
 │               └── api.ts           # API client
+├── Dockerfile           # Multi-stage production build
+├── docker-compose.yml   # Agist + Caddy reverse proxy
+├── Caddyfile            # Caddy routing config
+├── .env.example         # Environment variable reference
 ├── CLAUDE.md
 ├── package.json
 ├── pnpm-workspace.yaml
@@ -254,6 +341,15 @@ GET    /api/agents/:id
 PATCH  /api/agents/:id             { model?, status?, adapterConfig? }
 DELETE /api/agents/:id
 POST   /api/agents/:id/wake        → Spawns Claude CLI, creates run
+```
+
+### Projects
+```
+GET    /api/companies/:cid/projects
+POST   /api/companies/:cid/projects { name, description?, workingDirectory? }
+GET    /api/projects/:id
+PATCH  /api/projects/:id
+DELETE /api/projects/:id
 ```
 
 ### Routines

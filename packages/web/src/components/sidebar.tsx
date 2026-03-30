@@ -12,12 +12,14 @@ import {
   Settings,
   Monitor,
   Zap,
+  Folder,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/companies", label: "Companies", icon: Building2 },
+  { href: "/projects", label: "Projects", icon: Folder },
   { href: "/agents", label: "Agents", icon: Bot },
   { href: "/routines", label: "Routines", icon: Timer },
   { href: "/runs", label: "Runs", icon: Play },

@@ -1,3 +1,18 @@
+export interface PaginationParams {
+  page?: number    // 1-based, default 1
+  limit?: number   // default 20, max 100
+}
+
+export interface PaginatedResponse<T> {
+  data: T[]
+  pagination: {
+    page: number
+    limit: number
+    total: number
+    totalPages: number
+  }
+}
+
 export type CompanyStatus = "active" | "paused" | "archived";
 export type AgentStatus = "idle" | "running" | "paused" | "error";
 export type AgentRole =
@@ -39,8 +54,21 @@ export interface Agent {
   adapterType: string;
   adapterConfig: Record<string, unknown>;
   workingDirectory?: string | null; // absolute path to project directory
+  projectId?: string | null;
+  tags?: string[]; // free-form tags for grouping/filtering
   budgetMonthlyCents: number;
   spentMonthlyCents: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Project {
+  id: string;
+  companyId: string;
+  name: string;
+  description: string;
+  workingDirectory?: string | null;
+  agentCount?: number;
   createdAt: string;
   updatedAt: string;
 }

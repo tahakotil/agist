@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS agents (
   adapter_type          TEXT NOT NULL DEFAULT 'claude_local',
   adapter_config        TEXT NOT NULL DEFAULT '{}',
   working_directory     TEXT,
+  project_id            TEXT,
+  tags                  TEXT NOT NULL DEFAULT '',
   budget_monthly_cents  INTEGER NOT NULL DEFAULT 0,
   spent_monthly_cents   INTEGER NOT NULL DEFAULT 0,
   created_at            TEXT NOT NULL,
@@ -99,3 +101,40 @@ CREATE INDEX IF NOT EXISTS idx_issues_company_id ON issues(company_id);
 CREATE INDEX IF NOT EXISTS idx_issues_agent_id ON issues(agent_id);
 CREATE INDEX IF NOT EXISTS idx_issues_status ON issues(status);
 CREATE INDEX IF NOT EXISTS idx_issues_priority ON issues(priority);
+
+CREATE TABLE IF NOT EXISTS projects (
+  id                TEXT PRIMARY KEY,
+  company_id        TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  name              TEXT NOT NULL,
+  description       TEXT NOT NULL DEFAULT '',
+  working_directory TEXT,
+  created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_projects_company_id ON projects(company_id);
+
+CREATE TABLE IF NOT EXISTS api_keys (
+  id           TEXT PRIMARY KEY,
+  name         TEXT NOT NULL,
+  key_hash     TEXT NOT NULL UNIQUE,
+  role         TEXT NOT NULL DEFAULT 'admin' CHECK(role IN ('admin', 'readonly')),
+  created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  last_used_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys(key_hash);
+
+CREATE TABLE IF NOT EXISTS webhooks (
+  id          TEXT PRIMARY KEY,
+  company_id  TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  url         TEXT NOT NULL,
+  events      TEXT NOT NULL DEFAULT '*',
+  secret      TEXT,
+  enabled     INTEGER NOT NULL DEFAULT 1,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_webhooks_company_id ON webhooks(company_id);
+CREATE INDEX IF NOT EXISTS idx_webhooks_enabled ON webhooks(enabled);

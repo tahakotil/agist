@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  agist:
+    build: .
+    ports:
+      - "4400:4400"
+      - "3004:3004"
+    environment:
+      - NODE_ENV=production
+      - AGIST_AUTH_DISABLED=false
+      - CORS_ORIGINS=http://localhost:3004
+    volumes:
+      - agist-data:/root/.agist
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy-data:/data
+    depends_on:
+      - agist
+
+volumes:
+  agist-data:
+  caddy-data:
