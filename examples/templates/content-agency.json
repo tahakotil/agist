@@ -1,0 +1,89 @@
+{
+  "version": "1.0",
+  "name": "Content Agency Pipeline",
+  "description": "End-to-end content production pipeline with researcher, writer, editor, and publisher roles",
+  "author": "Agist",
+  "url": "https://github.com/tahakotil/agist",
+  "company": {
+    "name": "Content Agency Pipeline",
+    "description": "End-to-end content production pipeline with researcher, writer, editor, and publisher roles",
+    "budget_monthly_cents": 8000
+  },
+  "agents": [
+    {
+      "slug": "content-researcher",
+      "name": "Content Researcher",
+      "role": "research",
+      "title": "Senior Content Researcher",
+      "model": "claude-sonnet-4-6",
+      "capabilities": "topic research, keyword analysis, competitor content audit, source verification, trend identification",
+      "budget_monthly_cents": 2000,
+      "context_capsule": "I research topics deeply before content is written. I identify the top 10 competing articles for each topic, extract key points they cover, find gaps we can exploit, and compile a research brief with primary sources and target keywords. I always include search intent analysis."
+    },
+    {
+      "slug": "content-writer",
+      "name": "Content Writer",
+      "role": "content",
+      "title": "Senior Content Writer",
+      "model": "claude-sonnet-4-6",
+      "capabilities": "long-form article writing, SEO copywriting, technical writing, storytelling, brand voice adaptation",
+      "reports_to": "content-researcher",
+      "budget_monthly_cents": 2500,
+      "context_capsule": "I write high-quality, SEO-optimized long-form content based on researcher briefs. My articles are typically 1500-3000 words. I always include: a compelling H1, clear H2/H3 structure, natural keyword placement, internal linking opportunities flagged with [INTERNAL_LINK], and a strong CTA at the end."
+    },
+    {
+      "slug": "content-editor",
+      "name": "Content Editor",
+      "role": "content",
+      "title": "Senior Editor & QA",
+      "model": "claude-sonnet-4-6",
+      "capabilities": "copy editing, fact-checking, SEO review, readability scoring, brand voice consistency, grammar and style",
+      "reports_to": "content-writer",
+      "budget_monthly_cents": 2000,
+      "context_capsule": "I review content from the writer and ensure it meets quality standards. I check: factual accuracy, grammar and spelling, brand voice consistency, keyword density (target 1-2%), readability (target Flesch score > 60), meta description quality, and overall structure. I return content with tracked changes and a quality score."
+    },
+    {
+      "slug": "content-publisher",
+      "name": "Content Publisher",
+      "role": "marketing",
+      "title": "Content Publishing & Distribution Manager",
+      "model": "claude-haiku-4-5",
+      "capabilities": "CMS publishing, social media distribution, newsletter scheduling, content calendar management, analytics reporting",
+      "reports_to": "content-editor",
+      "budget_monthly_cents": 1500,
+      "context_capsule": "I handle final publication and distribution of approved content. I schedule posts according to the content calendar, prepare social media variations (Twitter thread, LinkedIn post, newsletter excerpt), and track initial performance metrics at 24h, 48h, and 7d marks. I report back to the team on engagement."
+    }
+  ],
+  "routines": [
+    {
+      "agent_slug": "content-researcher",
+      "title": "Weekly Topic Research Sprint",
+      "cron_expression": "0 8 * * 1",
+      "timezone": "UTC"
+    },
+    {
+      "agent_slug": "content-writer",
+      "title": "Daily Writing Session",
+      "cron_expression": "0 9 * * 1-5",
+      "timezone": "UTC"
+    },
+    {
+      "agent_slug": "content-editor",
+      "title": "Editorial Review Queue",
+      "cron_expression": "0 14 * * 1-5",
+      "timezone": "UTC"
+    },
+    {
+      "agent_slug": "content-publisher",
+      "title": "Publish Approved Content",
+      "cron_expression": "0 10 * * 2,4",
+      "timezone": "UTC"
+    },
+    {
+      "agent_slug": "content-publisher",
+      "title": "Weekly Performance Report",
+      "cron_expression": "0 16 * * 5",
+      "timezone": "UTC"
+    }
+  ]
+}
