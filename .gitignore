@@ -10,3 +10,9 @@ dist/
 *.log
 .turbo/
 .pnpmfile.cjs
+coverage/
+
+# Claude Code / internal planning (keep local, not in repo)
+CLAUDE.md
+PLAN.md
+BACKLOG.md
