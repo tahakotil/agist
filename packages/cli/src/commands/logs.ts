@@ -1,7 +1,8 @@
 import { Command } from 'commander'
 import chalk from 'chalk'
 import { existsSync, readFileSync } from 'fs'
-import { join, homedir } from 'path'
+import { join } from 'path'
+import { homedir } from 'os'
 // Use Node.js built-in WebSocket (Node 22+) — no external dep needed
 import type { AgistConfig } from './setup.js'
 

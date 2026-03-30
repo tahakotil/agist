@@ -1,13 +1,16 @@
 {
   "name": "agist",
-  "version": "0.1.0",
-  "description": "AI agent orchestration platform",
+  "version": "0.2.0",
+  "description": "AI agent orchestration platform CLI",
   "type": "module",
   "bin": {
     "agist": "./dist/index.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts",
+    "build": "tsup",
     "dev": "tsx src/index.ts"
   },
   "dependencies": {
