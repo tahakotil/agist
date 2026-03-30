@@ -275,6 +275,44 @@ export async function initDb(): Promise<Database> {
     // Column already exists — ignore
   }
 
+  // Context Capsules: capsules table (added in v1.7)
+  try {
+    db.run(`CREATE TABLE IF NOT EXISTS capsules (
+      id          TEXT PRIMARY KEY,
+      company_id  TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+      type        TEXT NOT NULL CHECK(type IN ('static','dynamic','composite')),
+      name        TEXT NOT NULL,
+      content     TEXT NOT NULL DEFAULT '',
+      token_count INTEGER DEFAULT 0,
+      version     INTEGER DEFAULT 1,
+      config      TEXT DEFAULT '{}',
+      active      INTEGER DEFAULT 1,
+      created_at  TEXT DEFAULT (datetime('now')),
+      updated_at  TEXT DEFAULT (datetime('now')),
+      expires_at  TEXT
+    )`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_capsules_company ON capsules(company_id)`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_capsules_type ON capsules(type)`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_capsules_active ON capsules(active)`);
+  } catch {
+    // Table already exists — ignore
+  }
+
+  // Context Capsules: capsule_versions table (added in v1.7)
+  try {
+    db.run(`CREATE TABLE IF NOT EXISTS capsule_versions (
+      capsule_id  TEXT NOT NULL,
+      version     INTEGER NOT NULL,
+      content     TEXT NOT NULL,
+      token_count INTEGER DEFAULT 0,
+      created_at  TEXT DEFAULT (datetime('now')),
+      PRIMARY KEY (capsule_id, version)
+    )`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_capsule_versions_id ON capsule_versions(capsule_id)`);
+  } catch {
+    // Table already exists — ignore
+  }
+
   // ── Enum migration: normalize legacy status values ────────────────────────
   db.run(`UPDATE runs SET status = 'completed' WHERE status IN ('success', 'succeeded')`);
   db.run(`UPDATE companies SET status = 'active' WHERE status IN ('inactive', 'suspended')`);

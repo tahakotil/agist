@@ -76,6 +76,33 @@ export async function createTestDb(): Promise<Database> {
     "ALTER TABLE runs ADD COLUMN output_summary TEXT",
     "ALTER TABLE runs ADD COLUMN output_confidence REAL",
     "ALTER TABLE runs ADD COLUMN chain_depth INTEGER NOT NULL DEFAULT 0",
+    // Context Capsules v1.7
+    `CREATE TABLE IF NOT EXISTS capsules (
+      id          TEXT PRIMARY KEY,
+      company_id  TEXT NOT NULL,
+      type        TEXT NOT NULL,
+      name        TEXT NOT NULL,
+      content     TEXT NOT NULL DEFAULT '',
+      token_count INTEGER DEFAULT 0,
+      version     INTEGER DEFAULT 1,
+      config      TEXT DEFAULT '{}',
+      active      INTEGER DEFAULT 1,
+      created_at  TEXT DEFAULT (datetime('now')),
+      updated_at  TEXT DEFAULT (datetime('now')),
+      expires_at  TEXT
+    )`,
+    "CREATE INDEX IF NOT EXISTS idx_capsules_company ON capsules(company_id)",
+    "CREATE INDEX IF NOT EXISTS idx_capsules_type ON capsules(type)",
+    "CREATE INDEX IF NOT EXISTS idx_capsules_active ON capsules(active)",
+    `CREATE TABLE IF NOT EXISTS capsule_versions (
+      capsule_id  TEXT NOT NULL,
+      version     INTEGER NOT NULL,
+      content     TEXT NOT NULL,
+      token_count INTEGER DEFAULT 0,
+      created_at  TEXT DEFAULT (datetime('now')),
+      PRIMARY KEY (capsule_id, version)
+    )`,
+    "CREATE INDEX IF NOT EXISTS idx_capsule_versions_id ON capsule_versions(capsule_id)",
   ]
   for (const sql of migrations) {
     try { db.run(sql) } catch { /* column or table already exists */ }

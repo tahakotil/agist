@@ -18,6 +18,10 @@ import { parseAgentOutputs } from './output-parser.js';
 import { parseStructuredOutput } from './parser/parse-output.js';
 import { ensureWorkspace, slugify } from './workspace.js';
 import { audit } from './audit.js';
+import {
+  updateDynamicCapsulesForAgent,
+  loadCapsulesForAgent,
+} from './capsules/capsule-manager.js';
 
 const LOG_EXCERPT_MAX_CHARS = 50_000;
 
@@ -497,6 +501,30 @@ export async function spawnClaudeLocal(
   const agentName = (agentRow?.name as string) || 'unknown-agent';
   const agentSlug = (agentRow?.slug as string) || slugify(agentName);
 
+  // Load structured capsules from the new capsule system if configured in adapter_config
+  let structuredCapsuleContent = '';
+  try {
+    const adapterConfigParsed = options.adapterConfig ?? {};
+    const contextConfig = adapterConfigParsed['context'] as Record<string, unknown> | undefined;
+    if (contextConfig) {
+      const capsuleIds = contextConfig['capsules'] as string[] | undefined;
+      if (Array.isArray(capsuleIds) && capsuleIds.length > 0) {
+        structuredCapsuleContent = await loadCapsulesForAgent(capsuleIds, companyId);
+      }
+    }
+  } catch (err) {
+    logger.warn('spawnClaudeLocal: failed to load structured capsules', {
+      agentId,
+      error: String(err),
+    });
+  }
+
+  // Combine structured capsule content with legacy agent context_capsule field
+  const legacyCapsule = (agentRow?.context_capsule as string) || '';
+  const combinedCapsule = [structuredCapsuleContent, legacyCapsule]
+    .filter(Boolean)
+    .join('\n\n---\n\n') || null;
+
   const ctx: AgentContext = {
     agentName,
     agentTitle: (agentRow?.title as string) || null,
@@ -506,7 +534,7 @@ export async function spawnClaudeLocal(
     companyDescription: (agentRow?.company_desc as string) || null,
     routineTitle: (routineRow?.title as string) || null,
     routineDescription: (routineRow?.description as string) || null,
-    contextCapsule: (agentRow?.context_capsule as string) || null,
+    contextCapsule: combinedCapsule,
   };
 
   // Fetch unconsumed signals for this agent (last 24h, max 10)
@@ -957,6 +985,17 @@ export async function spawnClaudeLocal(
           });
         }
       })();
+
+      // Update dynamic capsules sourced from this agent (fire-and-forget)
+      try {
+        updateDynamicCapsulesForAgent(agentId, companyId);
+      } catch (dynCapsuleErr) {
+        logger.warn('Failed to update dynamic capsules after run', {
+          runId,
+          agentId,
+          error: String(dynCapsuleErr),
+        });
+      }
 
       // Wake chain: if run completed successfully, parse and execute any __agist_wake requests
       if (exitCode === 0) {
