@@ -21,6 +21,11 @@ interface RunRow {
   cost_cents: number;
   log_excerpt: string;
   created_at: string;
+  // Structured output fields (added in v1.7)
+  output_raw: string | null;
+  output_structured: string | null;
+  output_summary: string | null;
+  output_confidence: number | null;
   agent_name?: string;
   company_name?: string;
 }
@@ -53,6 +58,17 @@ function rowToRun(row: RunRow) {
     durationMs,
     logExcerpt: row.log_excerpt,
     createdAt: row.created_at,
+    // Structured output (populated when agent has output_schema)
+    outputRaw: row.output_raw ?? null,
+    outputStructured: (() => {
+      try {
+        return row.output_structured ? (JSON.parse(row.output_structured) as Record<string, unknown>) : null;
+      } catch {
+        return null;
+      }
+    })(),
+    outputSummary: row.output_summary ?? null,
+    outputConfidence: row.output_confidence ?? null,
   };
 }
 

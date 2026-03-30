@@ -39,6 +39,15 @@ export async function createTestDb(): Promise<Database> {
     "ALTER TABLE agents ADD COLUMN tags TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE routines ADD COLUMN project_id TEXT",
     "ALTER TABLE agents ADD COLUMN context_capsule TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE agents ADD COLUMN slug TEXT",
+    // v1.7: structured output parsing
+    "ALTER TABLE agents ADD COLUMN output_schema TEXT",
+    "ALTER TABLE runs ADD COLUMN output_raw TEXT",
+    "ALTER TABLE runs ADD COLUMN output_structured TEXT",
+    "ALTER TABLE runs ADD COLUMN output_summary TEXT",
+    "ALTER TABLE runs ADD COLUMN output_confidence REAL",
+    // chain_depth for runs (wake chain support)
+    "ALTER TABLE runs ADD COLUMN chain_depth INTEGER NOT NULL DEFAULT 0",
   ]
   for (const sql of migrations) {
     try { db.run(sql) } catch { /* column already exists */ }

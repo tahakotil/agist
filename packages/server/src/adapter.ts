@@ -15,6 +15,7 @@ import { createGitHubIssue } from './integrations/github.js';
 import { getAdapter, getDefaultAdapter } from './adapters/index.js';
 import { estimateCostCents } from './adapters/cost.js';
 import { parseAgentOutputs } from './output-parser.js';
+import { parseStructuredOutput } from './parser/parse-output.js';
 import { ensureWorkspace, slugify } from './workspace.js';
 import { audit } from './audit.js';
 
@@ -907,6 +908,55 @@ export async function spawnClaudeLocal(
       } catch (parseErr) {
         logger.warn('Failed to parse structured outputs', { runId, agentId, error: String(parseErr) });
       }
+
+      // Schema-based structured output parsing (v1.7)
+      // Fire-and-forget async: fetch agent's output_schema and parse if present
+      ;(async () => {
+        try {
+          const agentRow = get<{ output_schema: string | null; name: string }>(
+            `SELECT output_schema, name FROM agents WHERE id = ?`,
+            [agentId]
+          );
+          if (!agentRow?.output_schema) return;
+
+          let schema: Record<string, unknown>;
+          try {
+            schema = JSON.parse(agentRow.output_schema) as Record<string, unknown>;
+          } catch {
+            return;
+          }
+
+          const rawOutput = plainTextLines.join('\n');
+          const context = `${agentRow.name} (runId: ${runId})`;
+
+          const result = await parseStructuredOutput(rawOutput, schema as Parameters<typeof parseStructuredOutput>[1], context);
+
+          run(
+            `UPDATE runs SET output_raw = ?, output_structured = ?, output_summary = ?, output_confidence = ? WHERE id = ?`,
+            [
+              rawOutput.slice(0, 50_000),
+              JSON.stringify(result.structured),
+              result.summary,
+              result.confidence,
+              runId,
+            ]
+          );
+
+          logger.info('Schema-based structured output stored', {
+            runId,
+            agentId,
+            confidence: result.confidence,
+            retries: result.retries,
+            costCents: result.costCents,
+          });
+        } catch (structuredErr) {
+          logger.warn('Schema-based structured output parsing failed', {
+            runId,
+            agentId,
+            error: String(structuredErr),
+          });
+        }
+      })();
 
       // Wake chain: if run completed successfully, parse and execute any __agist_wake requests
       if (exitCode === 0) {

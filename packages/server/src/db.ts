@@ -246,6 +246,35 @@ export async function initDb(): Promise<Database> {
     // Table already exists — ignore
   }
 
+  // Structured output parsing: output_schema column on agents (added in v1.7)
+  try {
+    db.run("ALTER TABLE agents ADD COLUMN output_schema TEXT");
+  } catch {
+    // Column already exists — ignore
+  }
+
+  // Structured output parsing: output columns on runs (added in v1.7)
+  try {
+    db.run("ALTER TABLE runs ADD COLUMN output_raw TEXT");
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    db.run("ALTER TABLE runs ADD COLUMN output_structured TEXT");
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    db.run("ALTER TABLE runs ADD COLUMN output_summary TEXT");
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    db.run("ALTER TABLE runs ADD COLUMN output_confidence REAL");
+  } catch {
+    // Column already exists — ignore
+  }
+
   // ── Enum migration: normalize legacy status values ────────────────────────
   db.run(`UPDATE runs SET status = 'completed' WHERE status IN ('success', 'succeeded')`);
   db.run(`UPDATE companies SET status = 'active' WHERE status IN ('inactive', 'suspended')`);
