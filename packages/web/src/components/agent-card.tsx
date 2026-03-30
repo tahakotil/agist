@@ -70,7 +70,9 @@ export function AgentCard({ agent, onWake, onPause }: AgentCardProps) {
                 {agent.name}
               </p>
               <p className="text-xs text-slate-500 truncate mt-0.5">
-                {agent.companyName}
+                {agent.contextCapsule
+                  ? agent.contextCapsule.split('\n').find((l) => l.trim()) ?? agent.companyName
+                  : agent.companyName}
               </p>
             </div>
           </div>
