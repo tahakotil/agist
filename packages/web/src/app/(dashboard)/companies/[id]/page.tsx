@@ -1,14 +1,14 @@
 "use client"
 
-import { use } from "react"
+import { use, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { getCompany, getCompanyAgents, getCompanyRoutines, wakeAgent, updateAgent, type Company, type Agent, type Routine } from "@/lib/api"
+import { getCompany, getCompanyAgents, getCompanyRoutines, getCompanySignals, getAgentRuns, wakeAgent, updateAgent, type Company, type Agent, type Routine, type Signal, type Run } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { buttonVariants } from "@/components/ui/button"
 import { OrgChart } from "@/components/org-chart"
 import { AgentCard } from "@/components/agent-card"
-import { Building2, Clock, DollarSign, Bot, ArrowLeft } from "lucide-react"
+import { Building2, Clock, DollarSign, Bot, ArrowLeft, Radio, CheckCircle2, XCircle, Loader2, PauseCircle } from "lucide-react"
 import { formatCost, relativeTime, cn } from "@/lib/utils"
 import Link from "next/link"
 import { toast } from "sonner"
@@ -34,6 +34,14 @@ export default function CompanyDetailPage({ params }: PageProps) {
   const { data: routines } = useQuery<Routine[]>({
     queryKey: ["companies", id, "routines"],
     queryFn: () => getCompanyRoutines(id).then((r) => r.routines),
+  })
+
+  const [signalTypeFilter, setSignalTypeFilter] = useState<string>("all")
+
+  const { data: signals } = useQuery<Signal[]>({
+    queryKey: ["companies", id, "signals"],
+    queryFn: () => getCompanySignals(id, { limit: 50 }),
+    refetchInterval: 15_000,
   })
 
   async function handleWake(agentId: string) {
@@ -243,6 +251,193 @@ export default function CompanyDetailPage({ params }: PageProps) {
           </div>
         </section>
       )}
+
+      {/* Fleet Overview */}
+      {agents && agents.length > 0 && (
+        <section>
+          <h2 className="text-lg font-semibold text-slate-100 mb-4">Fleet Overview</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            {agents.map((agent) => (
+              <FleetAgentCard key={agent.id} agent={agent} companyId={id} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Signal Feed */}
+      <section>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Radio className="h-4 w-4 text-violet-400" />
+            <h2 className="text-lg font-semibold text-slate-100">Signal Feed</h2>
+            {signals && signals.length > 0 && (
+              <span className="text-sm text-slate-500">({signals.length})</span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {["all", "alert", "kpi-change", "product-update", "social-proof", "seo-tactic", "market-trend"].map((type) => (
+              <button
+                key={type}
+                onClick={() => setSignalTypeFilter(type)}
+                className={cn(
+                  "px-2 py-0.5 rounded text-[11px] font-medium border transition-colors",
+                  signalTypeFilter === type
+                    ? "bg-violet-500/20 text-violet-300 border-violet-500/40"
+                    : "text-slate-500 border-slate-800 hover:text-slate-300 hover:border-slate-700"
+                )}
+              >
+                {type === "all" ? "All" : type}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {!signals ? (
+          <div className="space-y-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="h-14 bg-slate-900 rounded-lg border border-slate-800 animate-pulse" />
+            ))}
+          </div>
+        ) : signals.length === 0 ? (
+          <div className="flex items-center justify-center h-32 rounded-lg border border-dashed border-slate-800 text-slate-600 text-sm">
+            No signals yet — agents will broadcast here
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {signals
+              .filter((s) => signalTypeFilter === "all" || s.signalType === signalTypeFilter)
+              .map((signal) => (
+                <SignalRow key={signal.id} signal={signal} />
+              ))}
+            {signals.filter((s) => signalTypeFilter === "all" || s.signalType === signalTypeFilter).length === 0 && (
+              <div className="flex items-center justify-center h-20 rounded-lg border border-dashed border-slate-800 text-slate-600 text-sm">
+                No signals of this type
+              </div>
+            )}
+          </div>
+        )}
+      </section>
     </div>
+  )
+}
+
+// ─── Signal type badge color map ────────────────────────────────────────────
+
+const SIGNAL_TYPE_COLORS: Record<string, string> = {
+  "alert":          "bg-red-500/15 text-red-400 border-red-500/30",
+  "kpi-change":     "bg-orange-500/15 text-orange-400 border-orange-500/30",
+  "product-update": "bg-blue-500/15 text-blue-400 border-blue-500/30",
+  "social-proof":   "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+  "seo-tactic":     "bg-purple-500/15 text-purple-400 border-purple-500/30",
+  "market-trend":   "bg-cyan-500/15 text-cyan-400 border-cyan-500/30",
+}
+
+function signalTypeBadgeClass(type: string): string {
+  return SIGNAL_TYPE_COLORS[type] ?? "bg-slate-500/15 text-slate-400 border-slate-500/30"
+}
+
+// ─── SignalRow ────────────────────────────────────────────────────────────────
+
+function SignalRow({ signal }: { signal: Signal }) {
+  return (
+    <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 transition-colors">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge className={cn("text-[10px] border font-medium", signalTypeBadgeClass(signal.signalType))}>
+            {signal.signalType}
+          </Badge>
+          <span className="text-xs font-medium bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded border border-slate-700">
+            {signal.sourceAgentName || "unknown agent"}
+          </span>
+          <span className="text-xs text-slate-500 ml-auto">{relativeTime(signal.createdAt)}</span>
+        </div>
+        <p className="text-sm text-slate-200 mt-1.5 leading-snug">{signal.title}</p>
+        {signal.payload && Object.keys(signal.payload).length > 0 && (
+          <p className="text-[11px] text-slate-600 mt-1 font-mono truncate">
+            {JSON.stringify(signal.payload)}
+          </p>
+        )}
+        {signal.consumedBy && signal.consumedBy.length > 0 && (
+          <p className="text-[10px] text-slate-700 mt-1">
+            consumed by {signal.consumedBy.length} agent{signal.consumedBy.length > 1 ? "s" : ""}
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── FleetAgentCard ──────────────────────────────────────────────────────────
+
+function FleetAgentCard({ agent }: { agent: Agent; companyId: string }) {
+  const { data: runs } = useQuery<Run[]>({
+    queryKey: ["agents", agent.id, "runs", "fleet"],
+    queryFn: () => getAgentRuns(agent.id, { limit: 1 }).then((r) => r.runs),
+    staleTime: 30_000,
+  })
+
+  const lastRun = runs?.[0]
+  const lastRunFailed = lastRun?.status === "failed" || lastRun?.status === "timeout"
+
+  const statusIcon = (status: string) => {
+    if (status === "running") return <Loader2 className="h-3.5 w-3.5 text-blue-400 animate-spin" />
+    if (status === "completed") return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+    if (status === "failed" || status === "timeout") return <XCircle className="h-3.5 w-3.5 text-red-400" />
+    if (status === "paused") return <PauseCircle className="h-3.5 w-3.5 text-amber-400" />
+    return null
+  }
+
+  const modelShort = (model: string | null) => {
+    if (!model) return null
+    if (model.includes("haiku")) return { label: "Haiku", cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" }
+    if (model.includes("sonnet")) return { label: "Sonnet", cls: "bg-blue-500/15 text-blue-400 border-blue-500/30" }
+    if (model.includes("opus")) return { label: "Opus", cls: "bg-violet-500/15 text-violet-400 border-violet-500/30" }
+    return { label: model.split("-")[1] ?? model, cls: "bg-slate-500/15 text-slate-400 border-slate-500/30" }
+  }
+
+  const modelBadge = modelShort(agent.model)
+
+  return (
+    <Link href={`/agents/${agent.id}`}>
+      <Card
+        className={cn(
+          "bg-slate-900 border-slate-800 hover:border-slate-600 transition-colors cursor-pointer",
+          lastRunFailed && "border-red-500/40 bg-red-500/5 hover:border-red-500/60"
+        )}
+      >
+        <CardContent className="p-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-slate-200 truncate">{agent.name}</p>
+              <p className="text-[11px] text-slate-500 capitalize">{agent.role}</p>
+            </div>
+            {modelBadge && (
+              <Badge className={cn("text-[10px] border flex-shrink-0", modelBadge.cls)}>
+                {modelBadge.label}
+              </Badge>
+            )}
+          </div>
+          <div className="mt-2.5 flex items-center justify-between text-[11px]">
+            <span className="text-slate-600">
+              {lastRun ? relativeTime(lastRun.createdAt) : "No runs"}
+            </span>
+            {lastRun && (
+              <div className="flex items-center gap-1">
+                {statusIcon(lastRun.status)}
+                <span className={cn(
+                  "capitalize",
+                  lastRun.status === "completed" ? "text-emerald-400" :
+                  lastRun.status === "failed" || lastRun.status === "timeout" ? "text-red-400" :
+                  lastRun.status === "running" ? "text-blue-400" :
+                  "text-slate-500"
+                )}>
+                  {lastRun.status}
+                </span>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </Link>
   )
 }

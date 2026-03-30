@@ -9,7 +9,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Hono } from 'hono'
-import { createTestDb, setActiveDb, createDbMock } from '../../test/db-mock.js'
+import { createTestDb, setActiveDb, createDbMock } from './db-mock.js'
 
 vi.mock('../db.js', () => createDbMock())
 vi.mock('../sse.js', () => ({ broadcast: () => {}, subscribe: () => () => {} }))
@@ -27,8 +27,10 @@ async function buildApp() {
   const { agentsRouter } = await import('../routes/agents.js')
   const app = new Hono()
   app.use('*', async (c, next) => {
-    c.set('role', 'admin')
-    c.set('apiKeyId', 'test-key')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ctx = c as any
+    ctx.set('role', 'admin')
+    ctx.set('apiKeyId', 'test-key')
     return next()
   })
   app.route('/', companiesRouter)

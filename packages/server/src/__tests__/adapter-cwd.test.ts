@@ -9,6 +9,7 @@ import { Readable } from 'stream'
 
 const mockRun = vi.fn()
 const mockGet = vi.fn()
+const mockAll = vi.fn().mockReturnValue([])
 const mockBroadcast = vi.fn()
 const mockPushToAgent = vi.fn()
 const mockSpawn = vi.fn()
@@ -16,6 +17,7 @@ const mockSpawn = vi.fn()
 vi.mock('../db.js', () => ({
   run: (...args: unknown[]) => mockRun(...args),
   get: (...args: unknown[]) => mockGet(...args),
+  all: (...args: unknown[]) => mockAll(...args),
 }))
 
 vi.mock('../ws.js', () => ({

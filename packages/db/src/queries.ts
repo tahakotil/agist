@@ -107,6 +107,7 @@ function rowToAgent(row: Record<string, unknown>): Agent {
     adapterConfig,
     budgetMonthlyCents: row["budget_monthly_cents"] as number,
     spentMonthlyCents: row["spent_monthly_cents"] as number,
+    slug: (row["slug"] as string) ?? "",
     createdAt: row["created_at"] as string,
     updatedAt: row["updated_at"] as string,
   };
@@ -121,6 +122,7 @@ function rowToRun(row: Record<string, unknown>): Run {
     status: row["status"] as Run["status"],
     model: (row["model"] as string | null) ?? null,
     source: row["source"] as string,
+    chainDepth: (row["chain_depth"] as number) ?? 0,
     startedAt: (row["started_at"] as string | null) ?? null,
     finishedAt: (row["finished_at"] as string | null) ?? null,
     exitCode: (row["exit_code"] as number | null) ?? null,

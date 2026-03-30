@@ -6,6 +6,7 @@ export type SSEEventType =
   | 'run.started'
   | 'issue.created'
   | 'issue.updated'
+  | 'signal.created'
   | 'heartbeat';
 
 export interface SSEEvent {

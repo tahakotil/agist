@@ -13,6 +13,7 @@ import {
   Monitor,
   Zap,
   Folder,
+  FolderOpen,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -24,6 +25,7 @@ const navItems = [
   { href: "/routines", label: "Routines", icon: Timer },
   { href: "/runs", label: "Runs", icon: Play },
   { href: "/issues", label: "Issues", icon: AlertCircle },
+  { href: "/workspace", label: "Workspace", icon: FolderOpen },
 ]
 
 const bottomItems = [

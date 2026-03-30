@@ -39,7 +39,6 @@ CREATE TABLE IF NOT EXISTS agents (
 CREATE INDEX IF NOT EXISTS idx_agents_company_id ON agents(company_id);
 CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status);
 CREATE INDEX IF NOT EXISTS idx_agents_reports_to ON agents(reports_to);
-CREATE INDEX IF NOT EXISTS idx_agents_slug ON agents(slug);
 
 CREATE TABLE IF NOT EXISTS routines (
   id               TEXT PRIMARY KEY,
