@@ -5,8 +5,8 @@
 <h1 align="center">Agist</h1>
 
 <p align="center">
-  <strong>Open-source AI agent orchestration platform</strong><br/>
-  Manage your AI agent teams from a single dashboard.
+  <strong>Self-hosted AI agent orchestration platform.</strong><br/>
+  Define, schedule, chain, and observe autonomous AI agents — all from a single SQLite-powered stack.
 </p>
 
 <p align="center">
@@ -14,6 +14,7 @@
   <a href="#features">Features</a> &bull;
   <a href="#screenshots">Screenshots</a> &bull;
   <a href="#architecture">Architecture</a> &bull;
+  <a href="#api">API</a> &bull;
   <a href="#contributing">Contributing</a>
 </p>
 
@@ -26,28 +27,36 @@
 
 ---
 
-## What is Agist?
+## Why Agist?
 
-Agist is a lightweight, self-hosted control plane for AI coding agents. If you're running multiple Claude Code, Codex, or other AI agents and losing track of who's doing what — Agist gives you a dashboard.
+You're running multiple AI agents. Some write content, some analyze data, some monitor systems. Right now they're scattered: separate cron jobs, no shared context, no visibility into what they actually produced.
 
-```
-You define goals → Agist schedules agents → Agents do the work → You review from the dashboard
-```
+Agist gives you:
+- **One place** to define, run, and monitor all your agents
+- **Structured outputs** — agent results are parsed, not just raw text dumps
+- **Event-driven workflows** — agents trigger each other based on results, not blind schedules
+- **Context capsules** — reusable knowledge blocks agents share, with versioning
+- **Daily digest** — a single summary of what all agents did, what they spent, and what needs your attention
+- **Budget guardrails** — per-agent, per-team cost limits with automatic pausing
 
-**30-second setup. No PostgreSQL. No Docker. Just `npx`.**
+All running on SQLite. No Postgres, no Redis, no Kubernetes. Clone, configure, run.
 
 ### Agist vs Others
 
-| | Agist | Paperclip | CrewAI | Claude Squad |
-|---|---|---|---|---|
-| Setup time | 30 seconds | 20+ minutes | 10+ minutes | 5 minutes |
-| Database | SQLite (zero config) | PostgreSQL required | Python deps | None (no persistence) |
-| Dashboard | Web + Mobile PWA | Web only | SaaS only | Terminal TUI |
-| Real-time | WebSocket + SSE | Polling | SaaS | Terminal |
-| Self-hosted | Yes | Yes (complex) | Partial | Yes |
-| Multi-company | Yes | Yes | No | No |
-| Cost tracking | Built-in with charts | Text budgets | SaaS | None |
-| Price | Free & open source | Free | $99+/mo | Free |
+| | Agist | Paperclip | CrewAI | AutoGen | Claude Squad |
+|---|---|---|---|---|---|
+| Self-hosted | Yes | Yes (complex) | Partial | Yes | Yes |
+| SQLite (zero-config) | Yes | PostgreSQL | Python deps | - | None |
+| Structured output parsing | Advanced | Basic | Basic | - | - |
+| Context capsules | Yes | - | - | - | - |
+| Event-driven workflows | Yes | - | Partial | - | - |
+| Multi-tenant (teams) | Yes | Yes | - | - | - |
+| Budget tracking per agent | Yes | Text budgets | SaaS | - | - |
+| Daily digest | Yes | - | - | - | - |
+| Visual dashboard | Web + PWA | Web only | SaaS only | - | Terminal TUI |
+| Approval gates | Yes | - | - | - | - |
+| Single Docker deploy | Yes | - | - | - | - |
+| Price | Free & open source | Free | $99+/mo | Free | Free |
 
 ---
 
@@ -77,7 +86,6 @@ pnpm dev     # opens dashboard at localhost:3004
 ### Option 3: Docker
 
 ```bash
-# Clone and start with Docker Compose (includes automatic HTTPS via Caddy)
 git clone https://github.com/tahakotil/agist.git
 cd agist
 docker compose up -d
@@ -92,53 +100,256 @@ DOMAIN=agents.yourdomain.com docker compose up -d
 
 ---
 
-## CLI Reference
+## Features
 
-The `agist` CLI manages your local installation:
+### Agent Registry
 
-```bash
-npx agist setup    # interactive setup wizard
-npx agist start    # start backend + frontend
-npx agist status   # show server health, agent fleet, KPIs
-npx agist logs <agentId>   # stream live logs for an agent
-npx agist logs "*"          # stream all agent logs
+Define agents with model routing, schedules, budgets, and approval rules.
+
+```yaml
+agent:
+  id: "content-writer"
+  name: "Content Writer"
+  team: "marketing"
+  model_tier: "sonnet"              # haiku | sonnet | opus
+  role: "Writes social media posts based on recent analytics"
+
+  schedule:
+    type: "cron"                    # cron | event | manual
+    cron: "0 */4 * * *"
+
+  budget:
+    max_per_run: 0.50               # USD
+    max_daily: 2.00
+    max_monthly: 40.00
+    alert_threshold: 0.8
+
+  context:
+    capsules: ["brand-voice", "recent-metrics"]
+    include_last_n_outputs: 3
+
+  approval:
+    required_for: ["publish", "spend > $1"]
+    approver: "admin"
+    timeout_minutes: 60
+    auto_approve_after: 3
+
+  health:
+    max_consecutive_failures: 3
+    on_failure: "pause"             # pause | alert | retry
+```
+
+### Agent Lifecycle
+
+```
+IDLE → SCHEDULED → RUNNING → AWAITING_APPROVAL → COMPLETED
+                      ↓              ↓
+                   FAILED         REJECTED
+                      ↓
+                   PAUSED
+```
+
+Every state transition is logged. Visible in real-time on the dashboard.
+
+---
+
+### Structured Output Parsing
+
+Most agent platforms give you raw LLM text. Agist parses agent outputs into structured data using per-agent output schemas.
+
+```yaml
+output_schema:
+  type: "content"
+  fields:
+    headline: { type: "string", required: true }
+    body: { type: "string", required: true }
+    hashtags: { type: "array", items: "string" }
+    tone_score: { type: "number", min: 0, max: 1 }
+```
+
+Agist validates every output against the schema. If parsing fails, the agent retries with a stricter prompt. Parsed results are queryable via API.
+
+```json
+{
+  "run_id": "run_abc123",
+  "output": {
+    "raw": "Here's a post about...",
+    "structured": {
+      "headline": "5 things you didn't know about...",
+      "body": "Thread content here...",
+      "hashtags": ["#ai", "#automation"],
+      "tone_score": 0.82
+    },
+    "summary": "Generated a Twitter thread about AI automation trends",
+    "confidence": 0.95
+  }
+}
 ```
 
 ---
 
-## API Authentication
+### Signal Bus & Workflow Chains
 
-By default auth is disabled for local development. To enable:
+Agents don't run in isolation. One agent's output can trigger another.
 
-```bash
-# Set in environment or .env
-AGIST_AUTH_DISABLED=false
+```yaml
+signals:
+  - name: "content-ready"
+    emitter: "content-writer"
+    payload_schema:
+      content: string
+      platform: string
+
+workflows:
+  - name: "content-pipeline"
+    trigger:
+      signal: "content-ready"
+      filter: "payload.platform == 'twitter'"
+    steps:
+      - agent: "content-reviewer"
+        params:
+          content: "{{ trigger.payload.content }}"
+      - wait_for: "review-approved"
+      - agent: "content-publisher"
+        params:
+          content: "{{ steps[0].output.structured.reviewed_content }}"
+
+  - name: "lead-pipeline"
+    trigger:
+      signal: "lead-found"
+      filter: "payload.score >= 7"
+    steps:
+      - agent: "lead-enricher"
+      - agent: "outreach-drafter"
+        condition: "steps[0].output.structured.is_qualified == true"
 ```
 
-All API requests must then include the `X-Api-Key` header:
-
-```bash
-curl http://localhost:4400/api/agents \
-  -H "X-Api-Key: agist_<your-key>"
-```
-
-The API key is generated during `npx agist setup` and stored in `~/.agist/config.json`. The dashboard reads it automatically from `localStorage`.
+Signals are SQLite-native (poll-based, no message broker needed). The scheduler checks for pending signals every cycle and triggers matching workflows.
 
 ---
 
-## Configuration
+### Context Capsules
 
-All configuration via environment variables (see `.env.example` for full list):
+Reusable knowledge blocks that agents reference. No more copy-pasting context into every prompt.
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | `4400` | Backend API port |
-| `NODE_ENV` | `development` | Environment |
-| `AGIST_AUTH_DISABLED` | `true` | Disable API key auth (dev only) |
-| `CORS_ORIGINS` | `http://localhost:3004` | Allowed CORS origins |
-| `LOG_LEVEL` | `info` | Logging level (debug/info/warn/error) |
-| `ANTHROPIC_API_KEY` | — | Anthropic API key for Claude |
-| `RUN_TTL_DAYS` | `30` | Auto-delete runs older than N days |
+```yaml
+capsules:
+  - id: "brand-voice"
+    type: "static"
+    content: |
+      We're a developer-focused SaaS. Tone: technical but approachable.
+      Never use corporate jargon. Always include code examples.
+
+  - id: "recent-metrics"
+    type: "dynamic"
+    source: "agent:analytics-collector"
+    refresh: "daily"
+    max_age: "24h"
+
+  - id: "full-context"
+    type: "composite"
+    includes: ["brand-voice", "recent-metrics", "competitor-analysis"]
+    max_tokens: 8192
+    summarize_if_exceeds: true
+```
+
+Three types:
+- **Static** — manually written, versioned
+- **Dynamic** — auto-refreshed from agent outputs
+- **Composite** — combines multiple capsules, auto-summarizes if over token limit
+
+---
+
+### Daily Digest
+
+A meta-agent runs every night, collects all runs from the day, and generates a summary.
+
+```json
+{
+  "date": "2026-03-31",
+  "summary": {
+    "total_runs": 47,
+    "successful": 42,
+    "failed": 3,
+    "skipped": 2,
+    "total_cost_usd": 4.82
+  },
+  "by_team": {
+    "marketing": {
+      "runs": 18,
+      "cost_usd": 2.10,
+      "highlights": ["Generated 12 social posts", "3 posts auto-published"],
+      "issues": ["Image generator failed twice — rate limited"]
+    },
+    "sales": {
+      "runs": 14,
+      "cost_usd": 1.45,
+      "highlights": ["Found 8 qualified leads", "Drafted 5 outreach messages"]
+    }
+  },
+  "action_items": [
+    { "description": "Review 3 pending outreach drafts", "priority": "high" },
+    { "description": "Image API rate limit — consider upgrading plan", "priority": "medium" }
+  ],
+  "budget_status": {
+    "marketing": { "spent_month": 48.20, "limit_month": 100.00, "burn_rate": "on track" },
+    "sales": { "spent_month": 31.50, "limit_month": 80.00, "burn_rate": "under budget" }
+  }
+}
+```
+
+Digest is viewable on the dashboard and optionally pushed via webhook (Telegram, Discord, Slack, email).
+
+---
+
+### Budget Tracking
+
+Per-agent and per-team cost tracking with automatic enforcement.
+
+- Set monthly/daily/per-run limits
+- Alert at configurable threshold (default 80%)
+- Auto-pause agents that exceed limits
+- Dashboard shows burn rate projections
+- Full cost breakdown by model tier
+
+---
+
+### Approval Gates
+
+Some actions shouldn't be automatic. Define which actions require human approval.
+
+```yaml
+approval:
+  required_for: ["publish", "spend > $1", "external_api_call"]
+  approver: "admin"
+  timeout_minutes: 60
+  auto_approve_after: 3
+```
+
+Pending approvals show up in the dashboard with full context (agent output, cost, action description). After N consecutive successful approvals, the system can auto-approve.
+
+---
+
+### Live Dashboard
+
+```
+/dashboard
+├── /overview          → Today's digest, live agent status, budget meters
+├── /agents            → Agent list with last 10 runs each
+├── /agents/[id]       → Single agent: timeline, outputs, cost graph
+├── /runs              → Filterable run table (agent, status, date, cost)
+├── /runs/[id]         → Run detail: input, output, cost, duration
+├── /workflows         → Active workflow chains, signal flow
+├── /signals           → Signal log
+├── /digest            → Daily/weekly digest archive
+├── /budget            → Team-level budget tracking with projections
+├── /approvals         → Pending approvals (action required)
+└── /settings
+    ├── /agents        → Agent CRUD (YAML editor + form)
+    ├── /workflows     → Workflow builder
+    ├── /teams         → Team management
+    └── /notifications → Webhook configuration
+```
 
 ---
 
@@ -158,41 +369,6 @@ All configuration via environment variables (see `.env.example` for full list):
   <img src="assets/screenshot-agents.png" alt="Agents" width="100%" />
   <br/><sub>Agents — Model routing (Haiku/Sonnet/Opus), status, and schedule overview</sub>
 </p>
-
----
-
-## Features
-
-### Agent Management
-- Create agents with name, role, model, capabilities
-- Model routing: Haiku (cheap), Sonnet (balanced), Opus (deep reasoning)
-- Agent hierarchy with `reportsTo` relationships
-- Per-agent budget caps with cost tracking
-
-### Scheduled Heartbeats
-- Cron-based scheduling (every 30min to weekly)
-- Automatic Claude CLI spawning with `--model` flag
-- Run history with exit codes, token usage, cost
-- Collision-safe offsets between agent schedules
-
-### Live Dashboard
-- Real-time agent status via WebSocket
-- Terminal-style log viewer with color coding
-- Org chart visualization (React Flow)
-- Cost tracking charts (Tremor)
-- Full-screen status board for wall monitors (`/status`)
-- `Cmd+K` command palette
-
-### Multi-Company
-- Run multiple companies from one instance
-- Complete data isolation per company
-- Cross-company projects for coordination
-
-### Developer Experience
-- SQLite — no database server, no Docker, no setup
-- Zero native dependencies (sql.js = WebAssembly)
-- Hot reload in development (tsx watch + Turbopack)
-- Dark mode default
 
 ---
 
@@ -219,7 +395,7 @@ All configuration via environment variables (see `.env.example` for full list):
 ┌──────────────────────┴──────────────────────────┐
 │                   Database                       │
 │           SQLite (sql.js, WAL mode)             │
-│          ~/.agent-platform/data.db               │
+│              ~/.agist/data.db                    │
 │                                                  │
 │  companies │ agents │ routines │ runs │ issues  │
 └─────────────────────────────────────────────────┘
@@ -227,12 +403,12 @@ All configuration via environment variables (see `.env.example` for full list):
 ┌──────────────────────┴──────────────────────────┐
 │              Agent Adapter Layer                  │
 │                                                  │
-│  claude --model <model> --print -p "<task>"      │
+│  Claude CLI │ Anthropic API │ OpenAI │ Mock      │
 │  Streams output → WebSocket → Dashboard          │
 └─────────────────────────────────────────────────┘
 ```
 
-## Tech Stack
+### Tech Stack
 
 | Layer | Technology | Why |
 |-------|-----------|-----|
@@ -243,7 +419,7 @@ All configuration via environment variables (see `.env.example` for full list):
 | Scheduler | cron-parser + setInterval | Simple, reliable, no external deps |
 | IDs | nanoid | URL-safe, 21 chars, collision-resistant |
 
-## Project Structure
+### Project Structure
 
 ```
 agist/
@@ -272,7 +448,7 @@ agist/
 │   │       ├── db.ts           # SQLite init (sql.js)
 │   │       ├── schema.sql      # Table definitions
 │   │       ├── scheduler.ts    # Cron heartbeat scheduler
-│   │       ├── adapter.ts      # Claude CLI adapter
+│   │       ├── adapter.ts      # Multi-adapter layer
 │   │       ├── ws.ts           # WebSocket server
 │   │       ├── sse.ts          # SSE event stream
 │   │       └── routes/
@@ -290,7 +466,7 @@ agist/
 │           │   │   ├── page.tsx     # Status dashboard
 │           │   │   ├── agents/
 │           │   │   ├── companies/
-│           │   │   ├── projects/    # Project management
+│           │   │   ├── projects/
 │           │   │   ├── routines/
 │           │   │   ├── runs/
 │           │   │   ├── issues/
@@ -317,60 +493,224 @@ agist/
 
 ---
 
-## API Reference
+## CLI Reference
 
-### Health
-```
-GET /api/health → { status: "ok", version: "0.1.0", db: "ok" }
+```bash
+npx agist setup    # interactive setup wizard
+npx agist start    # start backend + frontend
+npx agist status   # show server health, agent fleet, KPIs
+npx agist logs <agentId>   # stream live logs for an agent
+npx agist logs "*"          # stream all agent logs
 ```
 
-### Companies
+---
+
+## Configuration
+
+All configuration via environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `4400` | Backend API port |
+| `AGIST_AUTH_DISABLED` | `true` | Disable API key auth (dev only) |
+| `CORS_ORIGINS` | `http://localhost:3004` | Allowed CORS origins |
+| `LOG_LEVEL` | `info` | Logging level (debug/info/warn/error) |
+| `ANTHROPIC_API_KEY` | — | Anthropic API key for Claude |
+| `OPENAI_API_KEY` | — | OpenAI API key |
+| `RUN_TTL_DAYS` | `30` | Auto-delete runs older than N days |
+| `SLACK_WEBHOOK_URL` | — | Slack notification webhook |
+| `GITHUB_TOKEN` | — | GitHub issue creation on failures |
+| `GITHUB_REPO` | — | owner/repo format |
+
+---
+
+## API Authentication
+
+By default auth is disabled for local development. To enable:
+
+```bash
+AGIST_AUTH_DISABLED=false
 ```
-GET    /api/companies
-POST   /api/companies              { name, description?, budgetMonthlyCents? }
-GET    /api/companies/:id
-PATCH  /api/companies/:id
-DELETE /api/companies/:id
+
+All API requests must then include the `X-Api-Key` header:
+
+```bash
+curl http://localhost:4400/api/agents \
+  -H "X-Api-Key: agist_<your-key>"
 ```
+
+---
+
+## API
 
 ### Agents
 ```
-GET    /api/companies/:cid/agents
-POST   /api/companies/:cid/agents  { name, role, model?, title?, capabilities? }
-GET    /api/agents/:id
-PATCH  /api/agents/:id             { model?, status?, adapterConfig? }
-DELETE /api/agents/:id
-POST   /api/agents/:id/wake        → Spawns Claude CLI, creates run
-```
-
-### Projects
-```
-GET    /api/companies/:cid/projects
-POST   /api/companies/:cid/projects { name, description?, workingDirectory? }
-GET    /api/projects/:id
-PATCH  /api/projects/:id
-DELETE /api/projects/:id
-```
-
-### Routines
-```
-GET    /api/companies/:cid/routines
-POST   /api/companies/:cid/routines { agentId, title, cronExpression, timezone? }
-PATCH  /api/routines/:id
-DELETE /api/routines/:id
+POST   /api/agents                    Create agent
+GET    /api/agents                    List agents (filter: team, status)
+GET    /api/agents/:id                Agent detail
+PUT    /api/agents/:id                Update agent
+POST   /api/agents/:id/run            Trigger manual run
+POST   /api/agents/:id/pause          Pause agent
+POST   /api/agents/:id/resume         Resume agent
 ```
 
 ### Runs
 ```
-GET    /api/runs/recent
-GET    /api/agents/:aid/runs
-GET    /api/runs/:id
+GET    /api/runs                      List runs (filter: agent, status, date)
+GET    /api/runs/:id                  Run detail
 ```
 
-### Real-time
+### Signals & Workflows
 ```
-WS  ws://localhost:4400/ws     → Subscribe: { type: "subscribe", agentId: "..." }
-SSE /api/events                → Agent status changes, run completions
+GET    /api/signals                   Signal log
+POST   /api/signals                   Emit signal manually
+GET    /api/workflows                 List workflows
+POST   /api/workflows                 Create workflow
+GET    /api/workflows/:id/runs        Workflow execution history
+```
+
+### Approvals
+```
+GET    /api/approvals                 List pending approvals
+POST   /api/approvals/:id/approve     Approve
+POST   /api/approvals/:id/reject      Reject
+```
+
+### Digest & Budget
+```
+GET    /api/digest                    Today's digest
+GET    /api/digest/:date              Specific date digest
+GET    /api/budget                    Budget overview
+GET    /api/budget/:team              Team budget detail
+```
+
+### Capsules
+```
+GET    /api/capsules                  List capsules
+PUT    /api/capsules/:id              Update capsule
+POST   /api/capsules/:id/refresh      Refresh dynamic capsule
+```
+
+### System
+```
+GET    /api/health                    Health check
+GET    /api/metrics                   Prometheus-compatible metrics
+GET    /api/docs                      Swagger UI
+WS     ws://localhost:4400/ws         Live agent logs
+SSE    /api/events                    Status change stream
+```
+
+---
+
+## Data Model
+
+```sql
+CREATE TABLE agents (
+  id TEXT PRIMARY KEY,
+  team TEXT NOT NULL,
+  name TEXT NOT NULL,
+  config TEXT NOT NULL,
+  status TEXT DEFAULT 'active',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE runs (
+  id TEXT PRIMARY KEY,
+  agent_id TEXT NOT NULL REFERENCES agents(id),
+  trigger_type TEXT NOT NULL,
+  triggered_by TEXT,
+  status TEXT NOT NULL,
+  started_at TEXT,
+  completed_at TEXT,
+  duration_ms INTEGER,
+  cost_usd REAL,
+  tokens_input INTEGER,
+  tokens_output INTEGER,
+  model_used TEXT,
+  input TEXT,
+  output_raw TEXT,
+  output_structured TEXT,
+  output_summary TEXT,
+  error TEXT
+);
+
+CREATE TABLE signals (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  emitter_agent_id TEXT,
+  emitter_run_id TEXT,
+  payload TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  consumed_by TEXT DEFAULT '[]'
+);
+
+CREATE TABLE workflows (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  config TEXT NOT NULL,
+  status TEXT DEFAULT 'active',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE workflow_runs (
+  id TEXT PRIMARY KEY,
+  workflow_id TEXT REFERENCES workflows(id),
+  trigger_signal_id TEXT,
+  status TEXT,
+  steps TEXT,
+  started_at TEXT,
+  completed_at TEXT
+);
+
+CREATE TABLE approvals (
+  id TEXT PRIMARY KEY,
+  run_id TEXT REFERENCES runs(id),
+  agent_id TEXT,
+  action TEXT,
+  status TEXT DEFAULT 'pending',
+  requested_at TEXT DEFAULT (datetime('now')),
+  resolved_at TEXT,
+  resolved_by TEXT
+);
+
+CREATE TABLE budget_usage (
+  id TEXT PRIMARY KEY,
+  team TEXT NOT NULL,
+  agent_id TEXT,
+  date TEXT NOT NULL,
+  cost_usd REAL,
+  tokens_input INTEGER,
+  tokens_output INTEGER
+);
+
+CREATE TABLE digests (
+  id TEXT PRIMARY KEY,
+  date TEXT NOT NULL UNIQUE,
+  content TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE capsules (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  content TEXT NOT NULL,
+  token_count INTEGER,
+  version INTEGER DEFAULT 1,
+  config TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  expires_at TEXT
+);
+
+CREATE TABLE capsule_versions (
+  capsule_id TEXT REFERENCES capsules(id),
+  version INTEGER,
+  content TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (capsule_id, version)
+);
 ```
 
 ---
@@ -379,18 +719,33 @@ SSE /api/events                → Agent status changes, run completions
 
 Assign each agent the right model for the job:
 
-| Model | ID | Best For | Cost |
-|-------|-----|---------|------|
-| Haiku 4.5 | `claude-haiku-4-5-20251001` | Health checks, monitoring, simple tasks | Lowest |
-| Sonnet 4.6 | `claude-sonnet-4-6` | Core development, content, analysis | Balanced |
-| Opus 4.6 | `claude-opus-4-6` | Strategic decisions, deep reasoning | Highest |
+| Model | Best For | Cost |
+|-------|---------|------|
+| Haiku 4.5 | Health checks, monitoring, simple tasks | Lowest |
+| Sonnet 4.6 | Core development, content, analysis | Balanced |
+| Opus 4.6 | Strategic decisions, deep reasoning | Highest |
 
-```bash
-# Update agent model via API
-curl -X PATCH http://localhost:4400/api/agents/<id> \
-  -H "Content-Type: application/json" \
-  -d '{"model": "claude-haiku-4-5-20251001"}'
-```
+---
+
+## Roadmap
+
+### Phase 1 — MVP
+- [x] Agent registry (YAML config + API + dashboard)
+- [x] Execution engine (cron + manual trigger + run logging)
+- [x] Signal bus + workflow chains
+- [x] Budget tracking + auto-pause
+- [x] Approval gates
+- [x] Dashboard (overview, agents, runs, approvals)
+- [ ] Structured output parsing with schema validation
+- [ ] Context capsules (static, dynamic, composite)
+- [ ] Daily digest generation
+
+### Phase 2
+- [ ] Visual workflow builder (drag & drop)
+- [ ] Capsule versioning UI
+- [ ] Multi-user auth
+- [ ] Webhook notifications (Telegram, Discord, Slack, email)
+- [ ] Plugin system for custom agent tools
 
 ---
 
@@ -399,11 +754,10 @@ curl -X PATCH http://localhost:4400/api/agents/<id> \
 Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ```bash
-# Development setup
 git clone https://github.com/tahakotil/agist.git
 cd agist
 pnpm install
-pnpm dev   # starts both backend and frontend
+pnpm dev
 ```
 
 ---
