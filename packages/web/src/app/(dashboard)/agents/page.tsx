@@ -76,6 +76,9 @@ function modelLabel(model: string): string {
 
 export default function AgentsPage() {
   const queryClient = useQueryClient()
+  const searchParams = useSearchParams()
+  const page = Number(searchParams.get("page") ?? 1)
+  const limit = Number(searchParams.get("limit") ?? 20)
   const [open, setOpen] = useState(false)
   const [agentName, setAgentName] = useState("")
   const [agentTitle, setAgentTitle] = useState("")
@@ -85,15 +88,18 @@ export default function AgentsPage() {
   const [agentWorkingDir, setAgentWorkingDir] = useState("")
   const [creating, setCreating] = useState(false)
 
-  const { data: agents, isLoading } = useQuery<Agent[]>({
-    queryKey: ["agents"],
-    queryFn: () => getAgents().then((r) => r.agents),
+  const { data, isLoading } = useQuery<{ agents: Agent[]; pagination: Pagination }>({
+    queryKey: ["agents", { page, limit }],
+    queryFn: () => getAgents({ page, limit }),
   })
+  const agents = data?.agents
+  const pagination = data?.pagination
 
-  const { data: companies } = useQuery<Company[]>({
-    queryKey: ["companies"],
-    queryFn: () => getCompanies().then((r) => r.companies),
+  const { data: companiesData } = useQuery<{ companies: Company[]; pagination: Pagination }>({
+    queryKey: ["companies", { page: 1, limit: 100 }],
+    queryFn: () => getCompanies({ page: 1, limit: 100 }),
   })
+  const companies = companiesData?.companies
 
   async function handleWake(id: string) {
     try {
@@ -299,6 +305,7 @@ export default function AgentsPage() {
           </TableBody>
         </Table>
       </div>
+      {pagination && <Paginator pagination={pagination} />}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="bg-slate-900 border-slate-700 text-slate-100">

@@ -1,7 +1,9 @@
 "use client"
 
 import { useQuery } from "@tanstack/react-query"
-import { getCompanies, getCompanyRoutines, updateRoutine, type Routine, type Company } from "@/lib/api"
+import { useSearchParams } from "next/navigation"
+import { getRoutines, updateRoutine, type Routine, type Pagination } from "@/lib/api"
+import { Paginator } from "@/components/paginator"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -12,39 +14,22 @@ import { useQueryClient } from "@tanstack/react-query"
 
 export default function RoutinesPage() {
   const queryClient = useQueryClient()
+  const searchParams = useSearchParams()
+  const page = Number(searchParams.get("page") ?? 1)
+  const limit = Number(searchParams.get("limit") ?? 20)
 
-  const { data: companies } = useQuery<Company[]>({
-    queryKey: ["companies"],
-    queryFn: () => getCompanies().then((r) => r.companies),
+  const { data, isLoading } = useQuery<{ routines: Routine[]; pagination: Pagination }>({
+    queryKey: ["routines", { page, limit }],
+    queryFn: () => getRoutines({ page, limit }),
   })
-
-  // Fetch routines for all companies in parallel; flatten results
-  const companyIds = companies?.map((c) => c.id) ?? []
-
-  const _routineQueries = companyIds.map((cid) => ({
-    queryKey: ["companies", cid, "routines"],
-    queryFn: () => getCompanyRoutines(cid).then((r) => r.routines),
-  }))
-
-  // Use a single derived state by watching the query cache
-  const { data: allRoutines, isLoading } = useQuery<Routine[]>({
-    queryKey: ["routines", "all", companyIds.join(",")],
-    queryFn: async () => {
-      if (companyIds.length === 0) return []
-      const results = await Promise.all(companyIds.map((cid) => getCompanyRoutines(cid).then((r) => r.routines)))
-      return results.flat()
-    },
-    enabled: companyIds.length > 0,
-  })
-
-  const routines = allRoutines ?? []
+  const routines = data?.routines ?? []
+  const pagination = data?.pagination
 
   async function handleToggle(routine: Routine) {
     try {
       await updateRoutine(routine.id, { enabled: !routine.enabled })
       toast.success(routine.enabled ? "Routine paused" : "Routine enabled")
       queryClient.invalidateQueries({ queryKey: ["routines"] })
-      queryClient.invalidateQueries({ queryKey: ["companies"] })
     } catch {
       toast.error("Failed to update routine")
     }
@@ -66,71 +51,81 @@ export default function RoutinesPage() {
           ))}
         </div>
       ) : routines && routines.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          {routines.map((routine) => (
-            <Card key={routine.id} className="bg-slate-900 border-slate-800 hover:border-slate-700 transition-all duration-200">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <Timer className="h-4 w-4 text-blue-400 flex-shrink-0" />
-                    <CardTitle className="text-sm font-semibold text-slate-200">
-                      {routine.title}
-                    </CardTitle>
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+            {routines.map((routine) => (
+              <Card key={routine.id} className="bg-slate-900 border-slate-800 hover:border-slate-700 transition-all duration-200">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <Timer className="h-4 w-4 text-blue-400 flex-shrink-0" />
+                      <CardTitle className="text-sm font-semibold text-slate-200">
+                        {routine.title}
+                      </CardTitle>
+                    </div>
+                    <Badge
+                      className={cn(
+                        "text-[10px] border flex-shrink-0",
+                        routine.enabled
+                          ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                          : "bg-slate-500/15 text-slate-400 border-slate-500/30"
+                      )}
+                    >
+                      {routine.enabled ? "Active" : "Paused"}
+                    </Badge>
                   </div>
-                  <Badge
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                    <Clock className="h-3 w-3" />
+                    <span className="font-mono">{routine.cronExpression}</span>
+                  </div>
+                  {(routine.agentName || routine.companyName) && (
+                    <p className="text-[11px] text-slate-600 truncate">
+                      {routine.agentName && <span>{routine.agentName}</span>}
+                      {routine.agentName && routine.companyName && <span> · </span>}
+                      {routine.companyName && <span>{routine.companyName}</span>}
+                    </p>
+                  )}
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div>
+                      <span className="text-slate-600 block">Last run</span>
+                      <span className="text-slate-400">{routine.lastRunAt ? relativeTime(routine.lastRunAt) : "Never"}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-600 block">Next run</span>
+                      <span className="text-slate-400">{routine.nextRunAt ? relativeTime(routine.nextRunAt) : "—"}</span>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
                     className={cn(
-                      "text-[10px] border flex-shrink-0",
+                      "h-7 w-full text-xs border-slate-700 bg-slate-800 text-slate-300 transition-colors",
                       routine.enabled
-                        ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
-                        : "bg-slate-500/15 text-slate-400 border-slate-500/30"
+                        ? "hover:bg-amber-500/10 hover:text-amber-400 hover:border-amber-500/40"
+                        : "hover:bg-emerald-500/10 hover:text-emerald-400 hover:border-emerald-500/40"
                     )}
+                    onClick={() => handleToggle(routine)}
                   >
-                    {routine.enabled ? "Active" : "Paused"}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                  <Clock className="h-3 w-3" />
-                  <span className="font-mono">{routine.cronExpression}</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-[11px]">
-                  <div>
-                    <span className="text-slate-600 block">Last run</span>
-                    <span className="text-slate-400">{routine.lastRunAt ? relativeTime(routine.lastRunAt) : "Never"}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-600 block">Next run</span>
-                    <span className="text-slate-400">{routine.nextRunAt ? relativeTime(routine.nextRunAt) : "—"}</span>
-                  </div>
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className={cn(
-                    "h-7 w-full text-xs border-slate-700 bg-slate-800 text-slate-300 transition-colors",
-                    routine.enabled
-                      ? "hover:bg-amber-500/10 hover:text-amber-400 hover:border-amber-500/40"
-                      : "hover:bg-emerald-500/10 hover:text-emerald-400 hover:border-emerald-500/40"
-                  )}
-                  onClick={() => handleToggle(routine)}
-                >
-                  {routine.enabled ? (
-                    <>
-                      <Pause className="h-3 w-3 mr-1.5" />
-                      Pause
-                    </>
-                  ) : (
-                    <>
-                      <Play className="h-3 w-3 mr-1.5" />
-                      Enable
-                    </>
-                  )}
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                    {routine.enabled ? (
+                      <>
+                        <Pause className="h-3 w-3 mr-1.5" />
+                        Pause
+                      </>
+                    ) : (
+                      <>
+                        <Play className="h-3 w-3 mr-1.5" />
+                        Enable
+                      </>
+                    )}
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+          {pagination && <Paginator pagination={pagination} />}
+        </>
       ) : (
         <div className="flex items-center justify-center h-48 rounded-lg border border-dashed border-slate-800 text-slate-600 text-sm">
           No routines configured
