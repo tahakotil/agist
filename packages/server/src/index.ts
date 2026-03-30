@@ -24,6 +24,9 @@ import { apiKeysRouter } from './routes/api-keys.js';
 import { metricsRouter } from './routes/metrics.js';
 import { projectsRouter } from './routes/projects.js';
 import { webhooksRouter } from './routes/webhooks.js';
+import { workspaceRouter } from './routes/workspace.js';
+import { signalsRouter } from './routes/signals.js';
+import { outputsRouter } from './routes/outputs.js';
 import { sseRouter } from './sse.js';
 import { initWebSocketServer, handleUpgrade, closeAllConnections } from './ws.js';
 import { startScheduler, initializeNextRunAts, stopScheduler } from './scheduler.js';
@@ -97,6 +100,9 @@ app.route('/', openapiRouter);
 app.route('/', apiKeysRouter);
 app.route('/', metricsRouter);
 app.route('/', webhooksRouter);
+app.route('/', workspaceRouter);
+app.route('/', signalsRouter);
+app.route('/', outputsRouter);
 app.route('/', sseRouter);
 
 // Serve static files from web build if available (production)

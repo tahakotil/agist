@@ -2,7 +2,7 @@
 
 import { use, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { getAgent, getAgentRuns, wakeAgent, updateAgent, type Agent, type Run } from "@/lib/api"
+import { getAgent, getAgentRuns, getAgentLatestOutput, wakeAgent, updateAgent, getAgentContext, updateAgentContext, type Agent, type Run, type RunOutput } from "@/lib/api"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -19,6 +19,7 @@ import { relativeTime, formatDuration, formatCost, cn } from "@/lib/utils"
 import {
   ArrowLeft,
   Bot,
+  Brain,
   Clock,
   Play,
   Pause,
@@ -27,6 +28,12 @@ import {
   XCircle,
   Timer,
   FolderOpen,
+  Save,
+  Activity,
+  BarChart2,
+  Search,
+  AlertTriangle,
+  FileText,
 } from "lucide-react"
 import Link from "next/link"
 import { toast } from "sonner"
@@ -74,12 +81,122 @@ function modelShortLabel(model: string): string {
   return model
 }
 
+const OUTPUT_TYPE_CONFIG: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
+  health: {
+    label: "Health",
+    className: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+    icon: <Activity className="h-3 w-3" />,
+  },
+  analytics: {
+    label: "Analytics",
+    className: "bg-blue-500/15 text-blue-400 border-blue-500/30",
+    icon: <BarChart2 className="h-3 w-3" />,
+  },
+  seo: {
+    label: "SEO",
+    className: "bg-violet-500/15 text-violet-400 border-violet-500/30",
+    icon: <Search className="h-3 w-3" />,
+  },
+  alert: {
+    label: "Alert",
+    className: "bg-red-500/15 text-red-400 border-red-500/30",
+    icon: <AlertTriangle className="h-3 w-3" />,
+  },
+  content: {
+    label: "Content",
+    className: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+    icon: <FileText className="h-3 w-3" />,
+  },
+  report: {
+    label: "Report",
+    className: "bg-slate-500/15 text-slate-400 border-slate-500/30",
+    icon: <FileText className="h-3 w-3" />,
+  },
+}
+
+const CHECK_STATUS_CLASS: Record<string, string> = {
+  PASS: "text-emerald-400",
+  WARN: "text-amber-400",
+  WARNING: "text-amber-400",
+  CRITICAL: "text-red-400",
+  FAIL: "text-red-400",
+  ERROR: "text-red-400",
+  OK: "text-emerald-400",
+}
+
+function LatestReportCard({ output }: { output: RunOutput }) {
+  const config = OUTPUT_TYPE_CONFIG[output.outputType] ?? OUTPUT_TYPE_CONFIG["report"]
+  const data = output.data
+  const topStatus = (data.status as string) ?? (data.overall_status as string) ?? null
+  const topStatusClass = topStatus ? (CHECK_STATUS_CLASS[topStatus.toUpperCase()] ?? "text-slate-300") : null
+  const checks = Array.isArray(data.checks) ? (data.checks as Record<string, unknown>[]) : null
+
+  // Extract key metrics for analytics
+  const metrics = data.metrics as Record<string, unknown> | null
+
+  return (
+    <Card className="bg-slate-900 border-slate-800">
+      <CardContent className="p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <Badge className={cn("border text-[11px] flex items-center gap-1", config.className)}>
+            {config.icon}
+            {config.label}
+          </Badge>
+          {topStatus && (
+            <span className={cn("text-xs font-mono font-semibold", topStatusClass)}>
+              {topStatus}
+            </span>
+          )}
+          <span className="ml-auto text-xs text-slate-500">{relativeTime(output.createdAt)}</span>
+        </div>
+
+        {/* Health checks */}
+        {checks && checks.length > 0 && (
+          <div className="space-y-1.5">
+            {checks.slice(0, 6).map((check, i) => {
+              const checkStatus = ((check.status as string) ?? "").toUpperCase()
+              const statusClass = CHECK_STATUS_CLASS[checkStatus] ?? "text-slate-400"
+              return (
+                <div key={i} className="flex items-center gap-2 text-xs">
+                  <span className={cn("font-mono font-semibold w-16 flex-shrink-0", statusClass)}>
+                    {checkStatus || "—"}
+                  </span>
+                  <span className="text-slate-300 truncate">
+                    {(check.name as string) ?? (check.check as string) ?? `Check ${i + 1}`}
+                  </span>
+                </div>
+              )
+            })}
+            {checks.length > 6 && (
+              <p className="text-xs text-slate-600">+{checks.length - 6} more checks</p>
+            )}
+          </div>
+        )}
+
+        {/* Key metrics for analytics */}
+        {metrics && !checks && (
+          <div className="grid grid-cols-2 gap-2">
+            {Object.entries(metrics).slice(0, 4).map(([key, val]) => (
+              <div key={key} className="rounded bg-slate-800 p-2">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">{key.replace(/_/g, " ")}</p>
+                <p className="text-sm font-mono text-slate-200 mt-0.5">{String(val)}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 export default function AgentDetailPage({ params }: PageProps) {
   const { id } = use(params)
   const queryClient = useQueryClient()
   const [wakeOpen, setWakeOpen] = useState(false)
   const [prompt, setPrompt] = useState("")
   const [waking, setWaking] = useState(false)
+  const [capsuleText, setCapsuleText] = useState<string | null>(null)
+  const [savingCapsule, setSavingCapsule] = useState(false)
 
   const { data: agent, isLoading } = useQuery<Agent>({
     queryKey: ["agents", id],
@@ -90,6 +207,33 @@ export default function AgentDetailPage({ params }: PageProps) {
     queryKey: ["agents", id, "runs"],
     queryFn: () => getAgentRuns(id, { limit: 20 }).then((r) => r.runs),
   })
+
+  const { data: latestOutput } = useQuery<RunOutput | null>({
+    queryKey: ["agents", id, "outputs", "latest"],
+    queryFn: () => getAgentLatestOutput(id),
+  })
+
+  const { data: contextData } = useQuery<{ capsule: string }>({
+    queryKey: ["agents", id, "context"],
+    queryFn: () => getAgentContext(id),
+    enabled: !!id,
+  })
+
+  const currentCapsule = capsuleText ?? contextData?.capsule ?? ""
+
+  async function handleSaveCapsule() {
+    setSavingCapsule(true)
+    try {
+      await updateAgentContext(id, currentCapsule)
+      toast.success("Context capsule saved")
+      queryClient.invalidateQueries({ queryKey: ["agents", id, "context"] })
+      setCapsuleText(null)
+    } catch (err) {
+      toast.error("Failed to save capsule: " + (err instanceof Error ? err.message : "Unknown error"))
+    } finally {
+      setSavingCapsule(false)
+    }
+  }
 
   async function handleWake() {
     setWaking(true)
@@ -306,6 +450,55 @@ export default function AgentDetailPage({ params }: PageProps) {
             <p className="text-xs text-slate-600">Not set — Claude CLI will run from the server process directory.</p>
           </CardContent>
         </Card>
+      )}
+
+      <section>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-slate-100 flex items-center gap-2">
+            <Brain className="h-5 w-5 text-violet-400" />
+            Context Capsule
+          </h2>
+          {agent.updatedAt && contextData?.capsule && (
+            <span className="text-xs text-slate-500">Last updated {relativeTime(agent.updatedAt)}</span>
+          )}
+        </div>
+        <Card className="bg-slate-900 border-slate-800">
+          <CardContent className="p-4 space-y-3">
+            <p className="text-xs text-slate-500">
+              Persistent memory injected into every run. Claude can update this automatically by outputting{" "}
+              <code className="font-mono text-slate-400 bg-slate-800 px-1 py-0.5 rounded text-[11px]">__agist_context_update__</code>{" "}
+              followed by new content. Max 10,000 characters.
+            </p>
+            <Textarea
+              value={currentCapsule}
+              onChange={(e) => setCapsuleText(e.target.value)}
+              placeholder="No context capsule yet. Add persistent memory here — IDENTITY, goals, current project state, preferences — anything you want injected into every run."
+              className="bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-600 resize-none font-mono text-xs leading-relaxed"
+              rows={10}
+            />
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-slate-600 font-mono">
+                {currentCapsule.length} / 10,000 chars
+              </span>
+              <Button
+                size="sm"
+                className="bg-violet-600 hover:bg-violet-500 text-white"
+                onClick={handleSaveCapsule}
+                disabled={savingCapsule || capsuleText === null}
+              >
+                <Save className="h-3.5 w-3.5 mr-1.5" />
+                {savingCapsule ? "Saving..." : "Save"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+
+      {latestOutput && (
+        <section>
+          <h2 className="text-lg font-semibold text-slate-100 mb-4">Latest Report</h2>
+          <LatestReportCard output={latestOutput} />
+        </section>
       )}
 
       <section>

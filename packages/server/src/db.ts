@@ -106,6 +106,95 @@ export async function initDb(): Promise<Database> {
     // Column already exists — ignore
   }
 
+  // Context capsule migration (added in v1.4)
+  try {
+    db.run("ALTER TABLE agents ADD COLUMN context_capsule TEXT NOT NULL DEFAULT ''");
+  } catch {
+    // Column already exists — ignore
+  }
+
+  // Agent slug migration (added in v1.3)
+  try {
+    db.run("ALTER TABLE agents ADD COLUMN slug TEXT");
+  } catch {
+    // Column already exists — ignore
+  }
+  // Back-fill slugs for existing rows that don't have one yet
+  try {
+    const rows = db.exec("SELECT id, name FROM agents WHERE slug IS NULL OR slug = ''");
+    if (rows.length > 0 && rows[0].values.length > 0) {
+      for (const row of rows[0].values) {
+        const id = row[0] as string;
+        const name = row[1] as string;
+        const baseSlug = name
+          .toLowerCase()
+          .trim()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '') || 'agent';
+        // Ensure uniqueness within company
+        const agentRow = db.exec(`SELECT company_id FROM agents WHERE id = '${id}'`);
+        const companyId = agentRow[0]?.values[0]?.[0] as string | undefined;
+        if (companyId) {
+          let slug = baseSlug;
+          let counter = 1;
+          while (true) {
+            const conflict = db.exec(
+              `SELECT id FROM agents WHERE company_id = '${companyId}' AND slug = '${slug}' AND id != '${id}'`
+            );
+            if (!conflict[0] || conflict[0].values.length === 0) break;
+            slug = `${baseSlug}-${counter++}`;
+          }
+          db.run(`UPDATE agents SET slug = ? WHERE id = ?`, [slug, id]);
+        }
+      }
+    }
+  } catch {
+    // Back-fill failed — non-critical
+  }
+
+  // run_outputs table migration (added in v1.3)
+  try {
+    db.run(`CREATE TABLE IF NOT EXISTS run_outputs (
+      id          TEXT PRIMARY KEY,
+      run_id      TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+      agent_id    TEXT NOT NULL,
+      output_type TEXT NOT NULL DEFAULT 'report',
+      data        TEXT NOT NULL,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_run_outputs_run ON run_outputs(run_id)`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_run_outputs_agent ON run_outputs(agent_id)`);
+  } catch {
+    // Table already exists — ignore
+  }
+
+  // Run chain_depth migration (added in v1.3 — wake chain support)
+  try {
+    db.run("ALTER TABLE runs ADD COLUMN chain_depth INTEGER NOT NULL DEFAULT 0");
+  } catch {
+    // Column already exists — ignore
+  }
+
+  // Signals table migration (added in v1.5)
+  try {
+    db.run(`CREATE TABLE IF NOT EXISTS signals (
+      id                TEXT PRIMARY KEY,
+      company_id        TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+      source_agent_id   TEXT NOT NULL,
+      source_agent_name TEXT NOT NULL DEFAULT '',
+      signal_type       TEXT NOT NULL,
+      title             TEXT NOT NULL,
+      payload           TEXT NOT NULL DEFAULT '{}',
+      consumed_by       TEXT NOT NULL DEFAULT '[]',
+      created_at        TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_signals_company ON signals(company_id)`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_signals_type ON signals(signal_type)`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_signals_created_at ON signals(created_at)`);
+  } catch {
+    // Table already exists — ignore
+  }
+
   // ── Enum migration: normalize legacy status values ────────────────────────
   db.run(`UPDATE runs SET status = 'completed' WHERE status IN ('success', 'succeeded')`);
   db.run(`UPDATE companies SET status = 'active' WHERE status IN ('inactive', 'suspended')`);
