@@ -17,3 +17,7 @@ coverage/
 **/AGENTS.md
 PLAN.md
 BACKLOG.md
+
+# Local-only seed scripts (personal infrastructure, not for public repo)
+seed-yapilar.ts
+yapilar.md
