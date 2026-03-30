@@ -246,6 +246,22 @@ export async function initDb(): Promise<Database> {
     // Table already exists — ignore
   }
 
+  // Daily digests table (added in v1.7)
+  try {
+    db.run(`CREATE TABLE IF NOT EXISTS digests (
+      id         TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+      date       TEXT NOT NULL,
+      content    TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(company_id, date)
+    )`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_digests_company ON digests(company_id)`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_digests_date ON digests(date DESC)`);
+  } catch {
+    // Table already exists — ignore
+  }
+
   // ── Enum migration: normalize legacy status values ────────────────────────
   db.run(`UPDATE runs SET status = 'completed' WHERE status IN ('success', 'succeeded')`);
   db.run(`UPDATE companies SET status = 'active' WHERE status IN ('inactive', 'suspended')`);

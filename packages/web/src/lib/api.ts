@@ -832,3 +832,95 @@ export async function pauseAgent(agentId: string): Promise<{ agent: Agent }> {
 export async function resumeAgent(agentId: string): Promise<{ agent: Agent }> {
   return api<{ agent: Agent }>(`/agents/${agentId}/resume`, { method: 'POST' });
 }
+
+// ── Daily Digests ─────────────────────────────────────────────────────────────
+
+export interface AgentDigestEntry {
+  agentId: string;
+  agentName: string;
+  totalRuns: number;
+  successfulRuns: number;
+  failedRuns: number;
+  totalCostCents: number;
+  avgDurationMs: number;
+  highlights: string[];
+  issues: string[];
+}
+
+export interface ActionItem {
+  priority: 'high' | 'medium' | 'low';
+  description: string;
+  agentId?: string;
+  agentName?: string;
+}
+
+export interface BudgetStatus {
+  budgetMonthlyCents: number;
+  spentMonthlyCents: number;
+  burnRatePct: number;
+  onTrack: boolean;
+}
+
+export interface DailyDigest {
+  companyId: string;
+  date: string;
+  totalRuns: number;
+  successfulRuns: number;
+  failedRuns: number;
+  totalCostCents: number;
+  pendingApprovals: number;
+  agentEntries: AgentDigestEntry[];
+  actionItems: ActionItem[];
+  budgetStatus: BudgetStatus | null;
+  generatedAt: string;
+  llmSummary: string | null;
+}
+
+export interface DigestRow {
+  id: string;
+  companyId: string;
+  date: string;
+  digest: DailyDigest;
+  createdAt: string;
+}
+
+export async function getCompanyDigest(companyId: string): Promise<DigestRow | null> {
+  try {
+    const res = await api<{ digest: DigestRow | null }>(`/companies/${companyId}/digest`);
+    return res.digest;
+  } catch {
+    return null;
+  }
+}
+
+export async function getCompanyDigestByDate(companyId: string, date: string): Promise<DigestRow | null> {
+  try {
+    const res = await api<{ digest: DigestRow | null }>(`/companies/${companyId}/digest/${date}`);
+    return res.digest;
+  } catch {
+    return null;
+  }
+}
+
+export async function getCompanyDigestRange(
+  companyId: string,
+  from: string,
+  to: string
+): Promise<DigestRow[]> {
+  try {
+    const res = await api<{ digests: DigestRow[] }>(
+      `/companies/${companyId}/digest/range${buildQs({ from, to })}`
+    );
+    return res.digests;
+  } catch {
+    return [];
+  }
+}
+
+export async function generateCompanyDigest(companyId: string, date?: string): Promise<DigestRow> {
+  const res = await api<{ digest: DigestRow }>(`/companies/${companyId}/digest/generate`, {
+    method: 'POST',
+    body: JSON.stringify({ date }),
+  });
+  return res.digest;
+}

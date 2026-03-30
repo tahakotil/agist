@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid';
 import { all, get, run } from './db.js';
 import { spawnClaudeLocal, checkAgentBudget } from './adapter.js';
 import { logger } from './logger.js';
+import { generateDigest } from './digest/generate-digest.js';
 
 interface RoutineRow {
   id: string;
@@ -118,6 +119,59 @@ async function processDueRoutines(): Promise<void> {
   }
 }
 
+// ── Daily Digest ─────────────────────────────────────────────────────────────
+
+/**
+ * Run daily digest generation for all active companies.
+ * Fires at 23:00 UTC daily. Idempotent — skips if digest already exists.
+ */
+async function processDailyDigests(): Promise<void> {
+  const now = new Date();
+  const hour = now.getUTCHours();
+  const minute = now.getUTCMinutes();
+
+  // Only run between 23:00–23:29 UTC
+  if (hour !== 23 || minute >= 30) return;
+
+  const today = now.toISOString().slice(0, 10);
+
+  interface CompanyRow {
+    id: string;
+    name: string;
+  }
+
+  const companies = all<CompanyRow>(
+    `SELECT id, name FROM companies WHERE status = 'active'`
+  );
+
+  for (const company of companies) {
+    // Check if digest already exists for today (idempotent)
+    const existing = get(
+      `SELECT id FROM digests WHERE company_id = ? AND date = ?`,
+      [company.id, today]
+    );
+
+    if (existing) {
+      logger.debug('Scheduler: daily digest already exists, skipping', {
+        companyId: company.id,
+        date: today,
+      });
+      continue;
+    }
+
+    try {
+      await generateDigest(company.id, today);
+      logger.info('Scheduler: daily digest generated', { companyId: company.id, date: today });
+    } catch (err: unknown) {
+      logger.error('Scheduler: daily digest generation failed', {
+        companyId: company.id,
+        date: today,
+        error: String(err),
+      });
+    }
+  }
+}
+
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 
 export function startScheduler(): void {
@@ -135,6 +189,10 @@ export function startScheduler(): void {
     } catch (err: unknown) {
       logger.error('Run TTL purge error', { error: String(err) });
     }
+    // Check if it's time for daily digests
+    processDailyDigests().catch((err: unknown) => {
+      logger.error('Daily digest scheduler error', { error: String(err) });
+    });
   }, 30_000);
 
   logger.info('Scheduler started', { intervalMs: 30000 });
