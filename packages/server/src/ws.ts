@@ -1,6 +1,7 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import type { IncomingMessage } from 'http';
 import type { Duplex } from 'stream';
+import { logger } from './logger.js';
 
 interface SubscribeMessage {
   type: 'subscribe';
@@ -149,5 +150,5 @@ export function closeAllConnections(): void {
   }
   agentSubscriptions.clear();
   clientSubscriptions.clear();
-  console.log('[ws] All WebSocket connections closed.');
+  logger.info('All WebSocket connections closed');
 }

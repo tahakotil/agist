@@ -88,7 +88,7 @@ export default function AgentDetailPage({ params }: PageProps) {
 
   const { data: runs } = useQuery<Run[]>({
     queryKey: ["agents", id, "runs"],
-    queryFn: () => getAgentRuns(id, 20),
+    queryFn: () => getAgentRuns(id, { limit: 20 }).then((r) => r.runs),
   })
 
   async function handleWake() {

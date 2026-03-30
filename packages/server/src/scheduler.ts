@@ -2,6 +2,7 @@ import { CronExpressionParser } from 'cron-parser';
 import { nanoid } from 'nanoid';
 import { all, get, run } from './db.js';
 import { spawnClaudeLocal } from './adapter.js';
+import { logger } from './logger.js';
 
 interface RoutineRow {
   id: string;
@@ -35,6 +36,16 @@ function computeNextRunAt(cronExpression: string, timezone: string): string | nu
   } catch {
     return null;
   }
+}
+
+function purgeExpiredRuns(): void {
+  const ttlDays = process.env.RUN_TTL_DAYS ? parseInt(process.env.RUN_TTL_DAYS, 10) : null;
+  if (!ttlDays || isNaN(ttlDays) || ttlDays <= 0) return;
+
+  const cutoff = new Date(Date.now() - ttlDays * 24 * 60 * 60 * 1000).toISOString();
+  const countRow = run(`DELETE FROM runs WHERE created_at < ?`, [cutoff]);
+  // Log the purge (we can't get delete count easily from sql.js, so just log that it ran)
+  logger.info('Purged expired runs', { ttlDays, cutoff });
 }
 
 async function processDueRoutines(): Promise<void> {
@@ -82,6 +93,7 @@ async function processDueRoutines(): Promise<void> {
       companyId: routine.company_id,
       model: agent.model,
       prompt: `[Routine: ${routine.title}]\n\n${routine.description}`,
+      adapterType: agent.adapter_type,
       adapterConfig: (() => {
         try {
           return JSON.parse(agent.adapter_config) as Record<string, unknown>;
@@ -90,7 +102,7 @@ async function processDueRoutines(): Promise<void> {
         }
       })(),
     }).catch((err: unknown) => {
-      console.error(`[scheduler] Adapter error for routine ${routine.id}:`, err);
+      logger.error('Adapter error for routine', { routineId: routine.id, error: String(err) });
     });
   }
 }
@@ -100,23 +112,28 @@ let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 export function startScheduler(): void {
   // Run immediately on start, then every 30 seconds
   processDueRoutines().catch((err: unknown) => {
-    console.error('[scheduler] Initial tick error:', err);
+    logger.error('Scheduler initial tick error', { error: String(err) });
   });
 
   schedulerInterval = setInterval(() => {
     processDueRoutines().catch((err: unknown) => {
-      console.error('[scheduler] Tick error:', err);
+      logger.error('Scheduler tick error', { error: String(err) });
     });
+    try {
+      purgeExpiredRuns();
+    } catch (err: unknown) {
+      logger.error('Run TTL purge error', { error: String(err) });
+    }
   }, 30_000);
 
-  console.log('[scheduler] Started — checking routines every 30s');
+  logger.info('Scheduler started', { intervalMs: 30000 });
 }
 
 export function stopScheduler(): void {
   if (schedulerInterval !== null) {
     clearInterval(schedulerInterval);
     schedulerInterval = null;
-    console.log('[scheduler] Stopped.');
+    logger.info('Scheduler stopped');
   }
 }
 

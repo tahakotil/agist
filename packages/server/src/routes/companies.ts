@@ -3,6 +3,8 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { nanoid } from 'nanoid';
 import { all, get, run } from '../db.js';
+import { getPaginationParams, paginatedResponse } from '../utils/pagination.js';
+import { requireRole } from '../middleware/rbac.js';
 
 export const companiesRouter = new Hono();
 
@@ -40,22 +42,61 @@ function rowToCompany(row: CompanyRow & { agent_count?: number }) {
   };
 }
 
+const VALID_SORT_COLS: Record<string, string> = {
+  name: 'c.name',
+  createdAt: 'c.created_at',
+};
+
 // GET /api/companies
 companiesRouter.get('/api/companies', (c) => {
+  const { page, limit, offset } = getPaginationParams(c);
+  const search = c.req.query('search');
+  const status = c.req.query('status');
+  const sortParam = c.req.query('sort') ?? 'createdAt';
+  const sortCol = VALID_SORT_COLS[sortParam] ?? 'c.created_at';
+
+  const whereClauses: string[] = [];
+  const params: unknown[] = [];
+
+  if (search) {
+    whereClauses.push(`c.name LIKE ?`);
+    params.push(`%${search}%`);
+  }
+  if (status) {
+    whereClauses.push(`c.status = ?`);
+    params.push(status);
+  }
+
+  const where = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+  // Count query
+  const countRow = get<{ total: number }>(
+    `SELECT COUNT(DISTINCT c.id) as total FROM companies c ${where}`,
+    params
+  );
+  const total = countRow?.total ?? 0;
+
+  // Data query
   const rows = all<CompanyRow & { agent_count: number }>(
     `SELECT c.*, COUNT(a.id) as agent_count
      FROM companies c
      LEFT JOIN agents a ON a.company_id = c.id
+     ${where}
      GROUP BY c.id
-     ORDER BY c.created_at DESC`
+     ORDER BY ${sortCol} ${sortParam === 'name' ? 'ASC' : 'DESC'}
+     LIMIT ? OFFSET ?`,
+    [...params, limit, offset]
   );
 
-  return c.json({ companies: rows.map(rowToCompany) });
+  const { pagination } = paginatedResponse(rows, total, page, limit);
+
+  return c.json({ companies: rows.map(rowToCompany), pagination });
 });
 
 // POST /api/companies
 companiesRouter.post(
   '/api/companies',
+  requireRole('admin'),
   zValidator('json', createSchema),
   (c) => {
     const body = c.req.valid('json');
@@ -97,6 +138,7 @@ companiesRouter.get('/api/companies/:id', (c) => {
 // PATCH /api/companies/:id
 companiesRouter.patch(
   '/api/companies/:id',
+  requireRole('admin'),
   zValidator('json', updateSchema),
   (c) => {
     const id = c.req.param('id');
@@ -147,7 +189,7 @@ companiesRouter.patch(
 );
 
 // DELETE /api/companies/:id
-companiesRouter.delete('/api/companies/:id', (c) => {
+companiesRouter.delete('/api/companies/:id', requireRole('admin'), (c) => {
   const id = c.req.param('id');
 
   const existing = get(`SELECT id FROM companies WHERE id = ?`, [id]);

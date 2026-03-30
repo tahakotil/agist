@@ -2,7 +2,9 @@
 
 import { useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { getCompanies, createCompany, type Company } from "@/lib/api"
+import { useSearchParams } from "next/navigation"
+import { getCompanies, createCompany, type Company, type Pagination } from "@/lib/api"
+import { Paginator } from "@/components/paginator"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -22,15 +24,20 @@ import { toast } from "sonner"
 
 export default function CompaniesPage() {
   const queryClient = useQueryClient()
+  const searchParams = useSearchParams()
+  const page = Number(searchParams.get("page") ?? 1)
+  const limit = Number(searchParams.get("limit") ?? 20)
   const [open, setOpen] = useState(false)
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [creating, setCreating] = useState(false)
 
-  const { data: companies, isLoading } = useQuery<Company[]>({
-    queryKey: ["companies"],
-    queryFn: getCompanies,
+  const { data, isLoading } = useQuery<{ companies: Company[]; pagination: Pagination }>({
+    queryKey: ["companies", { page, limit }],
+    queryFn: () => getCompanies({ page, limit }),
   })
+  const companies = data?.companies
+  const pagination = data?.pagination
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
@@ -40,6 +47,7 @@ export default function CompaniesPage() {
       await createCompany({ name: name.trim(), description: description.trim() || undefined })
       toast.success("Company created")
       queryClient.invalidateQueries({ queryKey: ["companies"] })
+    queryClient.invalidateQueries({ queryKey: ["companies", { page, limit }] })
       setOpen(false)
       setName("")
       setDescription("")
@@ -74,11 +82,14 @@ export default function CompaniesPage() {
           ))}
         </div>
       ) : companies && companies.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          {companies.map((company) => (
-            <CompanyCard key={company.id} company={company} />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+            {companies.map((company) => (
+              <CompanyCard key={company.id} company={company} />
+            ))}
+          </div>
+          {pagination && <Paginator pagination={pagination} />}
+        </>
       ) : (
         <div className="flex flex-col items-center justify-center h-48 rounded-lg border border-dashed border-slate-800 text-slate-600 text-sm gap-3">
           <Building2 className="h-10 w-10 text-slate-700" />

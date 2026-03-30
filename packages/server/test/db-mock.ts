@@ -31,6 +31,18 @@ export async function createTestDb(): Promise<Database> {
   db.run('PRAGMA foreign_keys = ON');
   const schema = readFileSync(SCHEMA_PATH, 'utf8');
   db.run(schema);
+
+  // Run the same additive migrations as initDb() so test DB is always up-to-date
+  const migrations = [
+    'ALTER TABLE agents ADD COLUMN working_directory TEXT',
+    "ALTER TABLE agents ADD COLUMN project_id TEXT",
+    "ALTER TABLE agents ADD COLUMN tags TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE routines ADD COLUMN project_id TEXT",
+  ]
+  for (const sql of migrations) {
+    try { db.run(sql) } catch { /* column already exists */ }
+  }
+
   return db;
 }
 

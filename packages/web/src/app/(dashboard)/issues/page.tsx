@@ -15,26 +15,24 @@ import { relativeTime, cn } from "@/lib/utils"
 import { AlertCircle, AlertTriangle, Info, XCircle } from "lucide-react"
 import Link from "next/link"
 
-const SEVERITY_BADGE: Record<string, string> = {
+const PRIORITY_BADGE: Record<string, string> = {
   critical: "bg-red-500/15 text-red-400 border-red-500/30",
   high: "bg-orange-500/15 text-orange-400 border-orange-500/30",
   medium: "bg-amber-500/15 text-amber-400 border-amber-500/30",
   low: "bg-blue-500/15 text-blue-400 border-blue-500/30",
-  info: "bg-slate-500/15 text-slate-400 border-slate-500/30",
 }
 
-const SEVERITY_ICON: Record<string, React.ReactNode> = {
+const PRIORITY_ICON: Record<string, React.ReactNode> = {
   critical: <XCircle className="h-4 w-4 text-red-400" />,
   high: <AlertCircle className="h-4 w-4 text-orange-400" />,
   medium: <AlertTriangle className="h-4 w-4 text-amber-400" />,
   low: <Info className="h-4 w-4 text-blue-400" />,
-  info: <Info className="h-4 w-4 text-slate-400" />,
 }
 
 export default function IssuesPage() {
   const { data: companies } = useQuery<Company[]>({
     queryKey: ["companies"],
-    queryFn: getCompanies,
+    queryFn: () => getCompanies().then((r) => r.companies),
   })
 
   const companyIds = companies?.map((c) => c.id) ?? []
@@ -43,14 +41,13 @@ export default function IssuesPage() {
     queryKey: ["issues", "all", companyIds.join(",")],
     queryFn: async () => {
       if (companyIds.length === 0) return []
-      const results = await Promise.all(companyIds.map((cid) => getCompanyIssues(cid)))
+      const results = await Promise.all(companyIds.map((cid) => getCompanyIssues(cid).then((r) => r.issues)))
       return results.flat().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     },
     enabled: companyIds.length > 0,
   })
 
-  const open = issues?.filter((i) => !i.resolvedAt) ?? []
-  const _resolved = issues?.filter((i) => !!i.resolvedAt) ?? []
+  const openIssues = issues?.filter((i) => i.status !== "resolved" && i.status !== "closed") ?? []
 
   return (
     <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
@@ -61,11 +58,11 @@ export default function IssuesPage() {
         </p>
       </div>
 
-      {open.length > 0 && (
+      {openIssues.length > 0 && (
         <div className="flex items-center gap-2 p-3 rounded-lg bg-red-500/5 border border-red-500/20">
           <AlertCircle className="h-4 w-4 text-red-400 flex-shrink-0" />
           <span className="text-sm text-red-400 font-medium">
-            {open.length} open issue{open.length !== 1 ? "s" : ""} requiring attention
+            {openIssues.length} open issue{openIssues.length !== 1 ? "s" : ""} requiring attention
           </span>
         </div>
       )}
@@ -78,7 +75,7 @@ export default function IssuesPage() {
               <TableHead className="text-slate-500 text-xs">Issue</TableHead>
               <TableHead className="text-slate-500 text-xs">Agent</TableHead>
               <TableHead className="text-slate-500 text-xs">Company</TableHead>
-              <TableHead className="text-slate-500 text-xs">Severity</TableHead>
+              <TableHead className="text-slate-500 text-xs">Priority</TableHead>
               <TableHead className="text-slate-500 text-xs">Status</TableHead>
               <TableHead className="text-slate-500 text-xs pr-6">When</TableHead>
             </TableRow>
@@ -100,51 +97,55 @@ export default function IssuesPage() {
                   key={issue.id}
                   className={cn(
                     "border-slate-800 hover:bg-slate-800/40 transition-colors",
-                    issue.resolvedAt ? "opacity-50" : ""
+                    issue.status === "resolved" || issue.status === "closed" ? "opacity-50" : ""
                   )}
                 >
                   <TableCell className="pl-6 py-4 w-8">
-                    {SEVERITY_ICON[issue.severity] ?? <Info className="h-4 w-4 text-slate-400" />}
+                    {PRIORITY_ICON[issue.priority] ?? <Info className="h-4 w-4 text-slate-400" />}
                   </TableCell>
                   <TableCell className="py-4 max-w-xs">
                     <p className="text-sm font-medium text-slate-200 truncate">
-                      {issue.message}
+                      {issue.title}
                     </p>
-                    {issue.details && (
+                    {issue.description && (
                       <p className="text-xs text-slate-500 truncate mt-0.5">
-                        {issue.details}
+                        {issue.description}
                       </p>
                     )}
                   </TableCell>
                   <TableCell className="py-4">
-                    <Link href={`/agents/${issue.agentId}`} className="text-sm text-slate-400 hover:text-slate-200 transition-colors">
-                      {issue.agentName}
-                    </Link>
+                    {issue.agentId ? (
+                      <Link href={`/agents/${issue.agentId}`} className="text-sm text-slate-400 hover:text-slate-200 transition-colors">
+                        {issue.agentName ?? issue.agentId}
+                      </Link>
+                    ) : (
+                      <span className="text-sm text-slate-600">N/A</span>
+                    )}
                   </TableCell>
                   <TableCell className="py-4">
                     <Link href={`/companies/${issue.companyId}`} className="text-sm text-slate-400 hover:text-slate-200 transition-colors">
-                      {issue.companyName}
+                      {issue.companyName ?? issue.companyId}
                     </Link>
                   </TableCell>
                   <TableCell className="py-4">
                     <Badge
                       className={cn(
                         "text-[10px] px-1.5 py-0 h-4 border capitalize",
-                        SEVERITY_BADGE[issue.severity] ?? ""
+                        PRIORITY_BADGE[issue.priority] ?? "bg-slate-500/15 text-slate-400 border-slate-500/30"
                       )}
                     >
-                      {issue.severity}
+                      {issue.priority}
                     </Badge>
                   </TableCell>
                   <TableCell className="py-4">
                     <Badge
                       className={
-                        issue.resolvedAt
-                          ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] px-1.5 py-0 h-4"
-                          : "bg-red-500/15 text-red-400 border border-red-500/30 text-[10px] px-1.5 py-0 h-4"
+                        issue.status === "resolved" || issue.status === "closed"
+                          ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] px-1.5 py-0 h-4 capitalize"
+                          : "bg-red-500/15 text-red-400 border border-red-500/30 text-[10px] px-1.5 py-0 h-4 capitalize"
                       }
                     >
-                      {issue.resolvedAt ? "Resolved" : "Open"}
+                      {issue.status}
                     </Badge>
                   </TableCell>
                   <TableCell className="pr-6 py-4">

@@ -18,6 +18,8 @@ async function buildApp() {
   const { companiesRouter } = await import('../src/routes/companies.js');
   const { agentsRouter } = await import('../src/routes/agents.js');
   const app = new Hono();
+  // Inject admin role so RBAC middleware passes in tests
+  app.use('*', async (c, next) => { c.set('role', 'admin'); c.set('apiKeyId', 'test-key'); return next(); });
   app.route('/', companiesRouter);
   app.route('/', agentsRouter);
   app.onError((err, c) => c.json({ error: err.message }, 500));

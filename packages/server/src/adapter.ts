@@ -6,6 +6,21 @@ import { tmpdir } from 'os';
 import { run, get } from './db.js';
 import { pushToAgent } from './ws.js';
 import { broadcast } from './sse.js';
+import { logger } from './logger.js';
+import { incRun, incRunsActive, decRunsActive, addTokens } from './metrics.js';
+import { dispatchWebhooks } from './webhooks.js';
+import { sendSlackNotification } from './integrations/slack.js';
+import { createGitHubIssue } from './integrations/github.js';
+import { getAdapter, getDefaultAdapter } from './adapters/index.js';
+
+const LOG_EXCERPT_MAX_CHARS = 50_000;
+
+function capLogExcerpt(lines: string[]): string {
+  const joined = lines.join('\n');
+  if (joined.length <= LOG_EXCERPT_MAX_CHARS) return joined;
+  const truncated = joined.slice(-LOG_EXCERPT_MAX_CHARS);
+  return '[... truncated ...]\n' + truncated;
+}
 
 export interface RunAdapterOptions {
   runId: string;
@@ -15,6 +30,8 @@ export interface RunAdapterOptions {
   prompt: string;
   workingDirectory?: string | null;
   adapterConfig?: Record<string, unknown>;
+  /** Optional: override which adapter to use (e.g. 'mock', 'anthropic-api', 'openai') */
+  adapterType?: string;
 }
 
 interface AgentContext {
@@ -137,6 +154,35 @@ function estimateCostCents(
   );
 }
 
+/**
+ * Fire-and-forget: dispatch webhooks + Slack + GitHub after a run finishes.
+ * Never throws.
+ */
+function notifyRunFinished(
+  companyId: string,
+  event: 'run.completed' | 'run.failed',
+  runId: string,
+  agentId: string,
+  errorMsg?: string
+): void {
+  const runRecord = get<Record<string, unknown>>(`SELECT * FROM runs WHERE id = ?`, [runId])
+  const agentRecord = get<Record<string, unknown>>(`SELECT * FROM agents WHERE id = ?`, [agentId])
+
+  const payload: Record<string, unknown> = { run: runRecord, agent: agentRecord }
+  if (errorMsg) payload.error = errorMsg
+
+  dispatchWebhooks(companyId, event, payload).catch(() => undefined)
+
+  const slackUrl = process.env.SLACK_WEBHOOK_URL
+  if (slackUrl) {
+    sendSlackNotification(event, payload, slackUrl).catch(() => undefined)
+  }
+
+  if (event === 'run.failed') {
+    createGitHubIssue(event, payload).catch(() => undefined)
+  }
+}
+
 export async function spawnClaudeLocal(
   options: RunAdapterOptions
 ): Promise<void> {
@@ -193,6 +239,9 @@ export async function spawnClaudeLocal(
         [finishedAt, agentId]
       );
 
+      incRun('failed');
+      logger.error('Working directory not found', { runId, agentId, workingDirectory });
+
       broadcast({
         type: 'run.completed',
         data: { runId, agentId, companyId, status: 'failed', error: errorMsg },
@@ -223,6 +272,9 @@ export async function spawnClaudeLocal(
     `UPDATE agents SET status = ?, updated_at = ? WHERE id = ?`,
     ['running', now, agentId]
   );
+
+  incRunsActive();
+  logger.info('Run started', { runId, agentId, model });
 
   broadcast({
     type: 'agent.status',
@@ -304,7 +356,7 @@ export async function spawnClaudeLocal(
     // Timeout guard: kill process after 5 minutes
     const timeoutHandle = setTimeout(() => {
       if (settled) return;
-      console.error(`[adapter] Run ${runId} timed out after 5 minutes — killing process`);
+      logger.error('Run timed out — killing process', { runId, agentId });
       try {
         child.kill('SIGKILL');
       } catch {
@@ -313,7 +365,7 @@ export async function spawnClaudeLocal(
 
       const finishedAt = new Date().toISOString();
       const costCents = estimateCostCents(model, inputTokens, outputTokens);
-      const logExcerpt = logLines.slice(-200).join('\n');
+      const logExcerpt = capLogExcerpt(logLines);
 
       try { rmSync(skillDir, { recursive: true, force: true }); } catch { /* ignore */ }
 
@@ -335,6 +387,9 @@ export async function spawnClaudeLocal(
         [costCents, finishedAt, companyId]
       );
 
+      incRun('timeout');
+      addTokens(inputTokens, outputTokens);
+      decRunsActive();
       broadcast({ type: 'run.completed', data: { runId, agentId, companyId, status: 'timeout' } });
       pushToAgent(agentId, { type: 'status', agentId, status: 'idle', runId });
 
@@ -352,8 +407,8 @@ export async function spawnClaudeLocal(
       const status = exitCode === 0 ? 'completed' : 'failed';
       const costCents = estimateCostCents(model, inputTokens, outputTokens);
 
-      // Keep last 200 log lines as excerpt
-      const logExcerpt = logLines.slice(-200).join('\n');
+      // Keep log excerpt capped at 50K chars
+      const logExcerpt = capLogExcerpt(logLines);
 
       run(
         `UPDATE runs SET status = ?, started_at = ?, exit_code = ?, error = ?,
@@ -389,6 +444,11 @@ export async function spawnClaudeLocal(
         [costCents, finishedAt, companyId]
       );
 
+      incRun(status);
+      addTokens(inputTokens, outputTokens);
+      decRunsActive();
+      logger.info('Run completed', { runId, agentId, status, exitCode, costCents, inputTokens, outputTokens });
+
       pushToAgent(agentId, { type: 'status', agentId, status: agentStatus, runId });
 
       broadcast({
@@ -404,6 +464,15 @@ export async function spawnClaudeLocal(
           tokenOutput: outputTokens,
         },
       });
+
+      // Fire-and-forget notifications (webhooks, Slack, GitHub)
+      notifyRunFinished(
+        companyId,
+        status === 'completed' ? 'run.completed' : 'run.failed',
+        runId,
+        agentId,
+        status === 'failed' ? (errorOutput || 'Non-zero exit code') : undefined
+      );
 
       resolve();
     });
@@ -431,10 +500,17 @@ export async function spawnClaudeLocal(
         ['idle', finishedAt, agentId]
       );
 
+      incRun('failed');
+      decRunsActive();
+      logger.error('Failed to spawn claude CLI', { runId, agentId, error: errorMsg });
+
       broadcast({
         type: 'run.completed',
         data: { runId, agentId, companyId, status: 'failed', error: errorMsg },
       });
+
+      // Fire-and-forget notifications
+      notifyRunFinished(companyId, 'run.failed', runId, agentId, errorMsg);
 
       resolve();
     });

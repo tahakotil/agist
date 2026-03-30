@@ -15,7 +15,7 @@ export default function RoutinesPage() {
 
   const { data: companies } = useQuery<Company[]>({
     queryKey: ["companies"],
-    queryFn: getCompanies,
+    queryFn: () => getCompanies().then((r) => r.companies),
   })
 
   // Fetch routines for all companies in parallel; flatten results
@@ -23,7 +23,7 @@ export default function RoutinesPage() {
 
   const _routineQueries = companyIds.map((cid) => ({
     queryKey: ["companies", cid, "routines"],
-    queryFn: () => getCompanyRoutines(cid),
+    queryFn: () => getCompanyRoutines(cid).then((r) => r.routines),
   }))
 
   // Use a single derived state by watching the query cache
@@ -31,7 +31,7 @@ export default function RoutinesPage() {
     queryKey: ["routines", "all", companyIds.join(",")],
     queryFn: async () => {
       if (companyIds.length === 0) return []
-      const results = await Promise.all(companyIds.map((cid) => getCompanyRoutines(cid)))
+      const results = await Promise.all(companyIds.map((cid) => getCompanyRoutines(cid).then((r) => r.routines)))
       return results.flat()
     },
     enabled: companyIds.length > 0,

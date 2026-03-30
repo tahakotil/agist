@@ -28,12 +28,12 @@ export default function CompanyDetailPage({ params }: PageProps) {
 
   const { data: agents, isLoading: agentsLoading } = useQuery<Agent[]>({
     queryKey: ["companies", id, "agents"],
-    queryFn: () => getCompanyAgents(id),
+    queryFn: () => getCompanyAgents(id).then((r) => r.agents),
   })
 
   const { data: routines } = useQuery<Routine[]>({
     queryKey: ["companies", id, "routines"],
-    queryFn: () => getCompanyRoutines(id),
+    queryFn: () => getCompanyRoutines(id).then((r) => r.routines),
   })
 
   async function handleWake(agentId: string) {

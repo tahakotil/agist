@@ -62,7 +62,7 @@ export default function StatusBoardPage() {
 
   const { data: agents, isLoading, dataUpdatedAt } = useQuery<Agent[]>({
     queryKey: ["agents"],
-    queryFn: () => getAgents(),
+    queryFn: () => getAgents().then((r) => r.agents),
     refetchInterval: 5000,
   })
 

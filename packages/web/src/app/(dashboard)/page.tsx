@@ -5,12 +5,13 @@ import {
   getAgents,
   getRecentRuns,
   getDashboardStats,
+  getDashboardCosts,
   wakeAgent,
   updateAgent,
   type Agent,
   type Run,
   type DashboardStats,
-  type DailyCost,
+  type AgentDailyCost,
 } from "@/lib/api"
 import { StatCard } from "@/components/stat-card"
 import { AgentCard } from "@/components/agent-card"
@@ -26,7 +27,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { relativeTime, formatDuration, formatCost, cn } from "@/lib/utils"
-import { Bot, Play, CheckCircle, DollarSign } from "lucide-react"
+import { Bot, Play, CheckCircle, DollarSign, AlertTriangle } from "lucide-react"
 import { toast } from "sonner"
 
 const RUN_STATUS_BADGE: Record<string, string> = {
@@ -48,24 +49,17 @@ export default function DashboardPage() {
 
   const { data: agents, isLoading: agentsLoading, isError: agentsError } = useQuery<Agent[]>({
     queryKey: ["agents"],
-    queryFn: getAgents,
+    queryFn: () => getAgents().then((r) => r.agents),
   })
 
   const { data: runs, isLoading: runsLoading, isError: runsError } = useQuery<Run[]>({
     queryKey: ["runs", "recent"],
-    queryFn: () => getRecentRuns(10),
+    queryFn: () => getRecentRuns(20),
   })
 
-  const mockCosts: DailyCost[] = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date()
-    d.setDate(d.getDate() - (6 - i))
-    return {
-      date: d.toISOString().split("T")[0],
-      haiku: Math.random() * 0.05,
-      sonnet: Math.random() * 0.1,
-      opus: Math.random() * 0.15,
-      total: 0,
-    }
+  const { data: agentCosts } = useQuery<AgentDailyCost[]>({
+    queryKey: ["dashboard-costs"],
+    queryFn: () => getDashboardCosts(7),
   })
 
   async function handleWake(id: string) {
@@ -168,6 +162,60 @@ export default function DashboardPage() {
         )}
       </section>
 
+      {/* Failed Run Alerts Panel */}
+      {(() => {
+        const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000)
+        const failedRuns = runs?.filter(
+          (r) =>
+            (r.status === "failed" || r.status === "timeout") &&
+            r.startedAt != null &&
+            new Date(r.startedAt) > since24h
+        ) ?? []
+        if (failedRuns.length === 0) return null
+        return (
+          <Card className="bg-red-500/5 border-red-500/20">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base text-red-400 flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4" />
+                Failed Runs — Last 24h ({failedRuns.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="divide-y divide-red-500/10">
+                {failedRuns.slice(0, 5).map((run) => (
+                  <div key={run.id} className="px-6 py-3 flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-200">{run.agentName}</p>
+                      {run.error && (
+                        <p className="text-xs text-red-400/80 font-mono mt-0.5 truncate max-w-md">
+                          {run.error.slice(0, 120)}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <Badge
+                        className={cn(
+                          "text-[10px] px-1.5 py-0 h-4 border font-medium capitalize",
+                          RUN_STATUS_BADGE[run.status] ?? "bg-slate-500/15 text-slate-400"
+                        )}
+                      >
+                        {run.status}
+                      </Badge>
+                      <span className="text-xs text-slate-500">{relativeTime(run.startedAt)}</span>
+                    </div>
+                  </div>
+                ))}
+                {failedRuns.length > 5 && (
+                  <div className="px-6 py-2 text-xs text-slate-500">
+                    +{failedRuns.length - 5} more failed runs
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )
+      })()}
+
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
         <Card className="xl:col-span-3 bg-slate-900 border-slate-800">
           <CardHeader className="pb-4">
@@ -238,10 +286,10 @@ export default function DashboardPage() {
         <Card className="xl:col-span-2 bg-slate-900 border-slate-800">
           <CardHeader className="pb-2">
             <CardTitle className="text-base font-semibold text-slate-100">Cost — Last 7 Days</CardTitle>
-            <p className="text-xs text-slate-500">Stacked by model</p>
+            <p className="text-xs text-slate-500">Stacked by agent</p>
           </CardHeader>
           <CardContent>
-            <CostChart data={mockCosts} />
+            <CostChart data={agentCosts ?? []} />
           </CardContent>
         </Card>
       </div>

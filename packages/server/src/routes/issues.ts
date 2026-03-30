@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { nanoid } from 'nanoid';
 import { all, get, run } from '../db.js';
 import { broadcast } from '../sse.js';
+import { getPaginationParams, paginatedResponse } from '../utils/pagination.js';
+import { requireRole } from '../middleware/rbac.js';
 
 export const issuesRouter = new Hono();
 
@@ -48,6 +50,12 @@ function rowToIssue(row: IssueRow) {
   };
 }
 
+const VALID_ISSUE_SORT: Record<string, string> = {
+  priority: `CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END`,
+  createdAt: 'created_at',
+  status: 'status',
+};
+
 // GET /api/companies/:companyId/issues
 issuesRouter.get('/api/companies/:companyId/issues', (c) => {
   const companyId = c.req.param('companyId');
@@ -57,44 +65,51 @@ issuesRouter.get('/api/companies/:companyId/issues', (c) => {
     return c.json({ error: 'Company not found' }, 404);
   }
 
+  const { page, limit, offset } = getPaginationParams(c);
   const status = c.req.query('status');
   const priority = c.req.query('priority');
   const agentId = c.req.query('agentId');
+  const sortParam = c.req.query('sort') ?? 'priority';
+  const sortExpr = VALID_ISSUE_SORT[sortParam] ?? VALID_ISSUE_SORT['priority'];
 
-  let query = `SELECT * FROM issues WHERE company_id = ?`;
+  const clauses: string[] = ['company_id = ?'];
   const params: unknown[] = [companyId];
 
   if (status) {
-    query += ` AND status = ?`;
+    clauses.push(`status = ?`);
     params.push(status);
   }
   if (priority) {
-    query += ` AND priority = ?`;
+    clauses.push(`priority = ?`);
     params.push(priority);
   }
   if (agentId) {
-    query += ` AND agent_id = ?`;
+    clauses.push(`agent_id = ?`);
     params.push(agentId);
   }
 
-  query += ` ORDER BY
-    CASE priority
-      WHEN 'critical' THEN 0
-      WHEN 'high' THEN 1
-      WHEN 'medium' THEN 2
-      WHEN 'low' THEN 3
-      ELSE 4
-    END,
-    created_at DESC`;
+  const where = `WHERE ${clauses.join(' AND ')}`;
 
-  const rows = all<IssueRow>(query, params);
+  const countRow = get<{ total: number }>(
+    `SELECT COUNT(*) as total FROM issues ${where}`,
+    params
+  );
+  const total = countRow?.total ?? 0;
 
-  return c.json({ issues: rows.map(rowToIssue) });
+  const rows = all<IssueRow>(
+    `SELECT * FROM issues ${where} ORDER BY ${sortExpr}, created_at DESC LIMIT ? OFFSET ?`,
+    [...params, limit, offset]
+  );
+
+  const { pagination } = paginatedResponse(rows, total, page, limit);
+
+  return c.json({ issues: rows.map(rowToIssue), pagination });
 });
 
 // POST /api/companies/:companyId/issues
 issuesRouter.post(
   '/api/companies/:companyId/issues',
+  requireRole('admin'),
   zValidator('json', createSchema),
   (c) => {
     const companyId = c.req.param('companyId');
@@ -162,6 +177,7 @@ issuesRouter.get('/api/issues/:id', (c) => {
 // PATCH /api/issues/:id
 issuesRouter.patch(
   '/api/issues/:id',
+  requireRole('admin'),
   zValidator('json', updateSchema),
   (c) => {
     const id = c.req.param('id');
@@ -218,7 +234,7 @@ issuesRouter.patch(
 );
 
 // DELETE /api/issues/:id
-issuesRouter.delete('/api/issues/:id', (c) => {
+issuesRouter.delete('/api/issues/:id', requireRole('admin'), (c) => {
   const id = c.req.param('id');
 
   const existing = get(`SELECT id FROM issues WHERE id = ?`, [id]);

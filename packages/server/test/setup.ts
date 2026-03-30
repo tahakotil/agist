@@ -73,6 +73,15 @@ export async function buildTestApp(db: Database) {
   const { issuesRouter } = await import('../src/routes/issues.js');
 
   const app = new Hono();
+
+  // Tests run without an HTTP auth layer — inject admin role so RBAC passes.
+  // This mirrors AGIST_AUTH_DISABLED=true behaviour in production dev mode.
+  app.use('*', async (c, next) => {
+    c.set('role', 'admin');
+    c.set('apiKeyId', 'test-key');
+    return next();
+  });
+
   app.route('/', healthRouter);
   app.route('/', companiesRouter);
   app.route('/', agentsRouter);

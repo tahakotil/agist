@@ -2,7 +2,9 @@
 
 import { useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { getAgents, getCompanies, createAgent, wakeAgent, updateAgent, type Agent, type Company } from "@/lib/api"
+import { useSearchParams } from "next/navigation"
+import { getAgents, getCompanies, createAgent, wakeAgent, updateAgent, type Agent, type Company, type Pagination } from "@/lib/api"
+import { Paginator } from "@/components/paginator"
 import {
   Table,
   TableBody,
@@ -85,12 +87,12 @@ export default function AgentsPage() {
 
   const { data: agents, isLoading } = useQuery<Agent[]>({
     queryKey: ["agents"],
-    queryFn: getAgents,
+    queryFn: () => getAgents().then((r) => r.agents),
   })
 
   const { data: companies } = useQuery<Company[]>({
     queryKey: ["companies"],
-    queryFn: getCompanies,
+    queryFn: () => getCompanies().then((r) => r.companies),
   })
 
   async function handleWake(id: string) {

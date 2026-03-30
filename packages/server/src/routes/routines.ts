@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { nanoid } from 'nanoid';
 import { CronExpressionParser } from 'cron-parser';
 import { all, get, run } from '../db.js';
+import { getPaginationParams, paginatedResponse } from '../utils/pagination.js';
+import { requireRole } from '../middleware/rbac.js';
 
 export const routinesRouter = new Hono();
 
@@ -40,7 +42,7 @@ interface RoutineRow {
   updated_at: string;
 }
 
-function rowToRoutine(row: RoutineRow) {
+function rowToRoutine(row: RoutineRow & { company_name?: string; agent_name?: string }) {
   return {
     id: row.id,
     companyId: row.company_id,
@@ -54,6 +56,8 @@ function rowToRoutine(row: RoutineRow) {
     nextRunAt: row.next_run_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    ...(row.company_name !== undefined ? { companyName: row.company_name } : {}),
+    ...(row.agent_name !== undefined ? { agentName: row.agent_name } : {}),
   };
 }
 
@@ -78,6 +82,48 @@ function validateCron(expr: string): boolean {
   }
 }
 
+// GET /api/routines — Global routines list across all companies
+routinesRouter.get('/api/routines', (c) => {
+  const { page, limit, offset } = getPaginationParams(c);
+  const enabledParam = c.req.query('enabled');
+  const agentId = c.req.query('agentId');
+
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+
+  if (enabledParam !== undefined) {
+    clauses.push('r.enabled = ?');
+    params.push(enabledParam === 'true' ? 1 : 0);
+  }
+  if (agentId) {
+    clauses.push('r.agent_id = ?');
+    params.push(agentId);
+  }
+
+  const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+
+  const countRow = get<{ total: number }>(
+    `SELECT COUNT(*) as total FROM routines r ${where}`,
+    params
+  );
+  const total = countRow?.total ?? 0;
+
+  const rows = all<RoutineRow & { company_name: string; agent_name: string }>(
+    `SELECT r.*, c.name as company_name, a.name as agent_name
+     FROM routines r
+     LEFT JOIN companies c ON c.id = r.company_id
+     LEFT JOIN agents a ON a.id = r.agent_id
+     ${where}
+     ORDER BY r.created_at DESC
+     LIMIT ? OFFSET ?`,
+    [...params, limit, offset]
+  );
+
+  const { pagination } = paginatedResponse(rows, total, page, limit);
+
+  return c.json({ routines: rows.map(rowToRoutine), pagination });
+});
+
 // GET /api/companies/:companyId/routines
 routinesRouter.get('/api/companies/:companyId/routines', (c) => {
   const companyId = c.req.param('companyId');
@@ -87,17 +133,44 @@ routinesRouter.get('/api/companies/:companyId/routines', (c) => {
     return c.json({ error: 'Company not found' }, 404);
   }
 
+  const { page, limit, offset } = getPaginationParams(c);
+  const enabledParam = c.req.query('enabled');
+  const agentId = c.req.query('agentId');
+
+  const clauses: string[] = ['r.company_id = ?'];
+  const params: unknown[] = [companyId];
+
+  if (enabledParam !== undefined) {
+    clauses.push('r.enabled = ?');
+    params.push(enabledParam === 'true' ? 1 : 0);
+  }
+  if (agentId) {
+    clauses.push('r.agent_id = ?');
+    params.push(agentId);
+  }
+
+  const where = `WHERE ${clauses.join(' AND ')}`;
+
+  const countRow = get<{ total: number }>(
+    `SELECT COUNT(*) as total FROM routines r ${where}`,
+    params
+  );
+  const total = countRow?.total ?? 0;
+
   const rows = all<RoutineRow>(
-    `SELECT * FROM routines WHERE company_id = ? ORDER BY created_at ASC`,
-    [companyId]
+    `SELECT r.* FROM routines r ${where} ORDER BY r.created_at ASC LIMIT ? OFFSET ?`,
+    [...params, limit, offset]
   );
 
-  return c.json({ routines: rows.map(rowToRoutine) });
+  const { pagination } = paginatedResponse(rows, total, page, limit);
+
+  return c.json({ routines: rows.map(rowToRoutine), pagination });
 });
 
 // POST /api/companies/:companyId/routines
 routinesRouter.post(
   '/api/companies/:companyId/routines',
+  requireRole('admin'),
   zValidator('json', createSchema),
   (c) => {
     const companyId = c.req.param('companyId');
@@ -154,6 +227,7 @@ routinesRouter.post(
 // PATCH /api/routines/:id
 routinesRouter.patch(
   '/api/routines/:id',
+  requireRole('admin'),
   zValidator('json', updateSchema),
   (c) => {
     const id = c.req.param('id');
@@ -239,7 +313,7 @@ routinesRouter.patch(
 );
 
 // DELETE /api/routines/:id
-routinesRouter.delete('/api/routines/:id', (c) => {
+routinesRouter.delete('/api/routines/:id', requireRole('admin'), (c) => {
   const id = c.req.param('id');
 
   const existing = get(`SELECT id FROM routines WHERE id = ?`, [id]);

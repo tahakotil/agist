@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { all, get } from '../db.js';
+import { getPaginationParams, paginatedResponse } from '../utils/pagination.js';
 
 export const runsRouter = new Hono();
 
@@ -55,12 +56,84 @@ function rowToRun(row: RunRow) {
   };
 }
 
-const RUN_JOIN_SQL = `
-  SELECT r.*, a.name as agent_name, c.name as company_name
+const RUN_BASE_SQL = `
   FROM runs r
   LEFT JOIN agents a ON a.id = r.agent_id
   LEFT JOIN companies c ON c.id = r.company_id
 `;
+
+const RUN_SELECT_SQL = `SELECT r.*, a.name as agent_name, c.name as company_name`;
+
+const VALID_RUN_SORT: Record<string, string> = {
+  startedAt: 'r.started_at',
+  cost: 'r.cost_cents',
+  durationMs: '(CASE WHEN r.started_at IS NOT NULL AND r.finished_at IS NOT NULL THEN (julianday(r.finished_at) - julianday(r.started_at)) * 86400000 ELSE NULL END)',
+  createdAt: 'r.created_at',
+};
+
+function buildRunWhere(params: {
+  agentId?: string;
+  status?: string;
+  source?: string;
+  from?: string;
+  to?: string;
+}): { where: string; queryParams: unknown[] } {
+  const clauses: string[] = [];
+  const queryParams: unknown[] = [];
+
+  if (params.agentId) {
+    clauses.push('r.agent_id = ?');
+    queryParams.push(params.agentId);
+  }
+  if (params.status) {
+    clauses.push('r.status = ?');
+    queryParams.push(params.status);
+  }
+  if (params.source) {
+    clauses.push('r.source = ?');
+    queryParams.push(params.source);
+  }
+  if (params.from) {
+    clauses.push('r.started_at >= ?');
+    queryParams.push(params.from);
+  }
+  if (params.to) {
+    clauses.push('r.started_at <= ?');
+    queryParams.push(params.to);
+  }
+
+  const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+  return { where, queryParams };
+}
+
+// GET /api/runs — paginated, filterable run list
+runsRouter.get('/api/runs', (c) => {
+  const { page, limit, offset } = getPaginationParams(c);
+  const status = c.req.query('status');
+  const source = c.req.query('source');
+  const agentId = c.req.query('agentId');
+  const from = c.req.query('from');
+  const to = c.req.query('to');
+  const sortParam = c.req.query('sort') ?? 'startedAt';
+  const sortCol = VALID_RUN_SORT[sortParam] ?? 'r.created_at';
+
+  const { where, queryParams } = buildRunWhere({ agentId, status, source, from, to });
+
+  const countRow = get<{ total: number }>(
+    `SELECT COUNT(*) as total ${RUN_BASE_SQL} ${where}`,
+    queryParams
+  );
+  const total = countRow?.total ?? 0;
+
+  const rows = all<RunRow>(
+    `${RUN_SELECT_SQL} ${RUN_BASE_SQL} ${where} ORDER BY ${sortCol} DESC LIMIT ? OFFSET ?`,
+    [...queryParams, limit, offset]
+  );
+
+  const { pagination } = paginatedResponse(rows, total, page, limit);
+
+  return c.json({ runs: rows.map(rowToRun), pagination });
+});
 
 // GET /api/runs/recent — must be declared BEFORE /api/runs/:id
 runsRouter.get('/api/runs/recent', (c) => {
@@ -71,7 +144,7 @@ runsRouter.get('/api/runs/recent', (c) => {
   );
 
   const rows = all<RunRow>(
-    `${RUN_JOIN_SQL} ORDER BY r.created_at DESC LIMIT ?`,
+    `${RUN_SELECT_SQL} ${RUN_BASE_SQL} ORDER BY r.created_at DESC LIMIT ?`,
     [limit]
   );
 
@@ -82,7 +155,7 @@ runsRouter.get('/api/runs/recent', (c) => {
 runsRouter.get('/api/runs/:id', (c) => {
   const id = c.req.param('id');
 
-  const rows = all<RunRow>(`${RUN_JOIN_SQL} WHERE r.id = ?`, [id]);
+  const rows = all<RunRow>(`${RUN_SELECT_SQL} ${RUN_BASE_SQL} WHERE r.id = ?`, [id]);
   const row = rows[0];
 
   if (!row) {
@@ -102,16 +175,28 @@ runsRouter.get('/api/agents/:agentId/runs', (c) => {
     return c.json({ error: 'Agent not found' }, 404);
   }
 
-  const limitParam = c.req.query('limit');
-  const limit = Math.min(
-    200,
-    Math.max(1, parseInt(limitParam ?? '50', 10) || 50)
+  const { page, limit, offset } = getPaginationParams(c);
+  const status = c.req.query('status');
+  const source = c.req.query('source');
+  const from = c.req.query('from');
+  const to = c.req.query('to');
+  const sortParam = c.req.query('sort') ?? 'startedAt';
+  const sortCol = VALID_RUN_SORT[sortParam] ?? 'r.created_at';
+
+  const { where, queryParams } = buildRunWhere({ agentId, status, source, from, to });
+
+  const countRow = get<{ total: number }>(
+    `SELECT COUNT(*) as total ${RUN_BASE_SQL} ${where}`,
+    queryParams
   );
+  const total = countRow?.total ?? 0;
 
   const rows = all<RunRow>(
-    `${RUN_JOIN_SQL} WHERE r.agent_id = ? ORDER BY r.created_at DESC LIMIT ?`,
-    [agentId, limit]
+    `${RUN_SELECT_SQL} ${RUN_BASE_SQL} ${where} ORDER BY ${sortCol} DESC LIMIT ? OFFSET ?`,
+    [...queryParams, limit, offset]
   );
 
-  return c.json({ runs: rows.map(rowToRun) });
+  const { pagination } = paginatedResponse(rows, total, page, limit);
+
+  return c.json({ runs: rows.map(rowToRun), pagination });
 });
