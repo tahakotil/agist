@@ -315,7 +315,7 @@ export default function AgentsPage() {
           <form onSubmit={handleCreate} className="space-y-4">
             <div>
               <label className="text-xs text-slate-400 mb-1 block">Company *</label>
-              <Select value={agentCompanyId} onValueChange={setAgentCompanyId} required>
+              <Select value={agentCompanyId} onValueChange={(v) => v != null && setAgentCompanyId(v)} required>
                 <SelectTrigger className="bg-slate-800 border-slate-700 text-slate-100">
                   <SelectValue placeholder="Select company..." />
                 </SelectTrigger>
@@ -361,7 +361,7 @@ export default function AgentsPage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs text-slate-400 mb-1 block">Role</label>
-                <Select value={agentRole} onValueChange={setAgentRole}>
+                <Select value={agentRole} onValueChange={(v) => v != null && setAgentRole(v)}>
                   <SelectTrigger className="bg-slate-800 border-slate-700 text-slate-100">
                     <SelectValue />
                   </SelectTrigger>
@@ -374,7 +374,7 @@ export default function AgentsPage() {
               </div>
               <div>
                 <label className="text-xs text-slate-400 mb-1 block">Model</label>
-                <Select value={agentModel} onValueChange={setAgentModel}>
+                <Select value={agentModel} onValueChange={(v) => v != null && setAgentModel(v)}>
                   <SelectTrigger className="bg-slate-800 border-slate-700 text-slate-100">
                     <SelectValue />
                   </SelectTrigger>

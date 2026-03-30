@@ -83,7 +83,7 @@ export function Paginator({
       {/* limit selector */}
       <Select
         value={String(limit)}
-        onValueChange={(v) => router.push(createUrl({ limit: v, page: 1 }))}
+        onValueChange={(v) => v != null && router.push(createUrl({ limit: v, page: 1 }))}
       >
         <SelectTrigger className="h-7 w-[80px] text-xs bg-slate-800 border-slate-700 text-slate-300">
           <SelectValue />
