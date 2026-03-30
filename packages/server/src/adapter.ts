@@ -3,7 +3,8 @@ import { mkdirSync, writeFileSync, rmSync } from 'fs';
 import { access } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { run, get } from './db.js';
+import { run, get, all } from './db.js';
+import { nanoid } from 'nanoid';
 import { pushToAgent } from './ws.js';
 import { broadcast } from './sse.js';
 import { logger } from './logger.js';
@@ -12,6 +13,8 @@ import { dispatchWebhooks } from './webhooks.js';
 import { sendSlackNotification } from './integrations/slack.js';
 import { createGitHubIssue } from './integrations/github.js';
 import { getAdapter, getDefaultAdapter } from './adapters/index.js';
+import { parseAgentOutputs } from './output-parser.js';
+import { ensureWorkspace, slugify } from './workspace.js';
 
 const LOG_EXCERPT_MAX_CHARS = 50_000;
 
@@ -32,6 +35,168 @@ export interface RunAdapterOptions {
   adapterConfig?: Record<string, unknown>;
   /** Optional: override which adapter to use (e.g. 'mock', 'anthropic-api', 'openai') */
   adapterType?: string;
+  /** Chain depth for wake chains — 0 = direct trigger, increments each hop */
+  chainDepth?: number;
+  /** Slug of the agent that initiated the wake chain (if any) */
+  sourceAgentSlug?: string;
+}
+
+const MAX_CHAIN_DEPTH = 5;
+
+interface WakeChainRequest {
+  target_agent_slug: string;
+  reason: string;
+  priority?: string;
+  context?: string;
+}
+
+/** Matches single-level JSON objects containing __agist_wake key */
+const WAKE_CHAIN_REGEX = /\{"__agist_wake":\s*\{[^}]*\}\}/g;
+
+/**
+ * Parse __agist_wake markers from agent stdout.
+ * Returns array of wake chain requests, empty if none found.
+ */
+export function parseWakeChains(output: string): WakeChainRequest[] {
+  const results: WakeChainRequest[] = [];
+  const matches = output.match(WAKE_CHAIN_REGEX);
+  if (!matches) return results;
+
+  for (const match of matches) {
+    try {
+      const parsed = JSON.parse(match) as { __agist_wake?: WakeChainRequest };
+      const wake = parsed.__agist_wake;
+      if (wake?.target_agent_slug && typeof wake.target_agent_slug === 'string') {
+        results.push({
+          target_agent_slug: wake.target_agent_slug.trim(),
+          reason: typeof wake.reason === 'string' ? wake.reason : '',
+          priority: typeof wake.priority === 'string' ? wake.priority : undefined,
+          context: typeof wake.context === 'string' ? wake.context : undefined,
+        });
+      }
+    } catch {
+      // Malformed JSON — skip
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Fire-and-forget: execute wake chains triggered by a completed agent run.
+ * Finds each target agent by slug, creates a run record, and spawns Claude.
+ * Respects MAX_CHAIN_DEPTH to prevent infinite loops.
+ */
+async function executeWakeChains(
+  wakeChains: WakeChainRequest[],
+  sourceAgentId: string,
+  sourceAgentSlugForChain: string,
+  companyId: string,
+  currentChainDepth: number
+): Promise<void> {
+  if (wakeChains.length === 0) return;
+  const nextDepth = currentChainDepth + 1;
+  if (nextDepth >= MAX_CHAIN_DEPTH) {
+    logger.warn('Wake chain depth limit reached — not executing further chains', {
+      sourceAgentId,
+      currentChainDepth,
+      MAX_CHAIN_DEPTH,
+    });
+    return;
+  }
+
+  for (const wakeReq of wakeChains) {
+    try {
+      const targetAgent = get<{
+        id: string;
+        company_id: string;
+        name: string;
+        slug: string | null;
+        model: string;
+        status: string;
+        adapter_type: string;
+        adapter_config: string;
+        working_directory: string | null;
+        title: string;
+      }>(`SELECT id, company_id, name, slug, model, status, adapter_type, adapter_config, working_directory, title
+          FROM agents WHERE slug = ? AND company_id = ?`,
+        [wakeReq.target_agent_slug, companyId]
+      );
+
+      if (!targetAgent) {
+        logger.warn('Wake chain: target agent not found', {
+          sourceAgentId,
+          targetSlug: wakeReq.target_agent_slug,
+          companyId,
+        });
+        continue;
+      }
+
+      if (targetAgent.status === 'running') {
+        logger.info('Wake chain: target agent already running — skipping', {
+          sourceAgentId,
+          targetAgentId: targetAgent.id,
+          targetSlug: wakeReq.target_agent_slug,
+        });
+        continue;
+      }
+
+      const runId = nanoid();
+      const now = new Date().toISOString();
+      const source = `chain:${sourceAgentSlugForChain}`;
+
+      run(
+        `INSERT INTO runs (id, agent_id, company_id, routine_id, status, model, source, chain_depth, created_at)
+         VALUES (?, ?, ?, NULL, 'queued', ?, ?, ?, ?)`,
+        [runId, targetAgent.id, companyId, targetAgent.model, source, nextDepth, now]
+      );
+
+      const adapterConfig = (() => {
+        try { return JSON.parse(targetAgent.adapter_config) as Record<string, unknown>; }
+        catch { return {}; }
+      })();
+
+      const wakePrompt = [
+        wakeReq.reason || `Wake request from ${sourceAgentSlugForChain}`,
+        wakeReq.context ? `\nContext: ${wakeReq.context}` : '',
+        wakeReq.priority ? `\nPriority: ${wakeReq.priority}` : '',
+      ].join('').trim();
+
+      logger.info('Wake chain: spawning target agent', {
+        sourceAgentId,
+        targetAgentId: targetAgent.id,
+        targetSlug: wakeReq.target_agent_slug,
+        nextDepth,
+        source,
+      });
+
+      // Fire-and-forget — don't await to avoid blocking source agent completion
+      spawnClaudeLocal({
+        runId,
+        agentId: targetAgent.id,
+        companyId,
+        model: targetAgent.model,
+        prompt: wakePrompt,
+        workingDirectory: targetAgent.working_directory ?? null,
+        adapterConfig,
+        adapterType: targetAgent.adapter_type,
+        chainDepth: nextDepth,
+        sourceAgentSlug: sourceAgentSlugForChain,
+      }).catch((err: unknown) => {
+        logger.error('Wake chain: adapter error', {
+          sourceAgentId,
+          targetAgentId: targetAgent.id,
+          error: String(err),
+        });
+      });
+    } catch (err) {
+      logger.error('Wake chain: unexpected error processing wake request', {
+        sourceAgentId,
+        targetSlug: wakeReq.target_agent_slug,
+        error: String(err),
+      });
+    }
+  }
 }
 
 interface AgentContext {
@@ -43,41 +208,107 @@ interface AgentContext {
   companyDescription: string | null;
   routineTitle: string | null;
   routineDescription: string | null;
+  contextCapsule: string | null;
 }
 
-function buildSystemPrompt(ctx: AgentContext, taskPrompt: string): string {
-  const lines: string[] = [];
+/**
+ * Parse __agist_context_update__ marker from agent stdout.
+ * Returns the extracted capsule content or null if not found.
+ */
+export function parseContextUpdate(stdout: string): string | null {
+  const marker = '__agist_context_update__';
+  const idx = stdout.indexOf(marker);
+  if (idx === -1) return null;
 
-  lines.push(`# Agent Identity`);
-  lines.push(`You are "${ctx.agentName}", a ${ctx.agentRole} agent${ctx.agentTitle ? ` (${ctx.agentTitle})` : ''}.`);
-  lines.push(`Company: ${ctx.companyName}${ctx.companyDescription ? ` — ${ctx.companyDescription}` : ''}`);
+  const afterMarkerStart = idx + marker.length;
+  // Find the closing ``` fence after the marker
+  const closingFence = stdout.indexOf('```', afterMarkerStart);
+  if (closingFence === -1) {
+    // No closing fence — take everything until end (cap at 5000 chars)
+    const content = stdout.substring(afterMarkerStart).trim().slice(0, 5000);
+    return content || null;
+  }
+
+  const content = stdout.substring(afterMarkerStart, closingFence).trim();
+  return content || null;
+}
+
+interface IncomingSignal {
+  id: string;
+  source_agent_name: string;
+  signal_type: string;
+  title: string;
+  payload: string;
+}
+
+function buildSystemPrompt(ctx: AgentContext, taskPrompt: string, signals?: IncomingSignal[]): string {
+  const parts: string[] = [];
+
+  // 1. Context capsule (prepended if available)
+  if (ctx.contextCapsule?.trim()) {
+    parts.push('## YOUR CONTEXT CAPSULE\n\n' + ctx.contextCapsule);
+  }
+
+  // 2. Agent identity block
+  const identityLines: string[] = [];
+  identityLines.push(`# Agent Identity`);
+  identityLines.push(`You are "${ctx.agentName}", a ${ctx.agentRole} agent${ctx.agentTitle ? ` (${ctx.agentTitle})` : ''}.`);
+  identityLines.push(`Company: ${ctx.companyName}${ctx.companyDescription ? ` — ${ctx.companyDescription}` : ''}`);
 
   if (ctx.capabilities) {
-    lines.push('');
-    lines.push(`## Capabilities`);
-    lines.push(ctx.capabilities);
+    identityLines.push('');
+    identityLines.push(`## Capabilities`);
+    identityLines.push(ctx.capabilities);
   }
 
   if (ctx.routineTitle || ctx.routineDescription) {
-    lines.push('');
-    lines.push(`## Current Task: ${ctx.routineTitle || 'Manual wake'}`);
+    identityLines.push('');
+    identityLines.push(`## Current Task: ${ctx.routineTitle || 'Manual wake'}`);
     if (ctx.routineDescription) {
-      lines.push(ctx.routineDescription);
+      identityLines.push(ctx.routineDescription);
     }
   }
 
-  lines.push('');
-  lines.push(`## Instructions`);
-  lines.push(taskPrompt);
+  identityLines.push('');
+  identityLines.push(`## Instructions`);
+  identityLines.push(taskPrompt);
 
-  lines.push('');
-  lines.push(`## Output Rules`);
-  lines.push(`- Be concise and action-oriented`);
-  lines.push(`- Lead with findings or actions taken, not preamble`);
-  lines.push(`- If nothing changed since last run, say "STATUS: NO_CHANGE" with reason`);
-  lines.push(`- Always include evidence (data, commands run, results) not just conclusions`);
+  identityLines.push('');
+  identityLines.push(`## Output Rules`);
+  identityLines.push(`- Be concise and action-oriented`);
+  identityLines.push(`- Lead with findings or actions taken, not preamble`);
+  identityLines.push(`- If nothing changed since last run, say "STATUS: NO_CHANGE" with reason`);
+  identityLines.push(`- Always include evidence (data, commands run, results) not just conclusions`);
 
-  return lines.join('\n');
+  parts.push(identityLines.join('\n'));
+
+  // 3. Incoming signals from other agents
+  if (signals && signals.length > 0) {
+    const signalLines: string[] = ['## INCOMING SIGNALS (from other agents)'];
+    for (const sig of signals) {
+      let payloadObj: Record<string, unknown> = {};
+      try { payloadObj = JSON.parse(sig.payload) as Record<string, unknown>; } catch { /* ignore */ }
+      const payloadStr = Object.keys(payloadObj).length > 0
+        ? `\n  Payload: ${JSON.stringify(payloadObj)}`
+        : '';
+      signalLines.push(`- [${sig.signal_type}] from ${sig.source_agent_name || 'unknown-agent'}: ${sig.title}${payloadStr}`);
+    }
+    parts.push(signalLines.join('\n'));
+  }
+
+  // 4. Context update instruction
+  parts.push(`## CONTEXT UPDATE
+If your priorities or state changed, output an update block anywhere in your response:
+\`\`\`
+__agist_context_update__
+IDENTITY: [who you are]
+CURRENT PRIORITIES (updated ${new Date().toISOString().split('T')[0]}):
+1. ...
+LAST ACTION: [timestamp] — [what you did]
+NEXT ACTION: [what should happen next]
+\`\`\``);
+
+  return parts.join('\n\n---\n\n');
 }
 
 function buildSkillDir(ctx: AgentContext): string {
@@ -192,7 +423,7 @@ export async function spawnClaudeLocal(
 
   // Fetch agent + company context from DB
   const agentRow = get<Record<string, unknown>>(
-    `SELECT a.name, a.title, a.role, a.capabilities, c.name as company_name, c.description as company_desc
+    `SELECT a.name, a.slug, a.title, a.role, a.capabilities, a.context_capsule, c.name as company_name, c.description as company_desc
      FROM agents a JOIN companies c ON a.company_id = c.id WHERE a.id = ?`, [agentId]
   );
 
@@ -202,8 +433,11 @@ export async function spawnClaudeLocal(
      JOIN runs ru ON ru.routine_id = r.id WHERE ru.id = ?`, [runId]
   );
 
+  const agentName = (agentRow?.name as string) || 'unknown-agent';
+  const agentSlug = (agentRow?.slug as string) || slugify(agentName);
+
   const ctx: AgentContext = {
-    agentName: (agentRow?.name as string) || 'unknown-agent',
+    agentName,
     agentTitle: (agentRow?.title as string) || null,
     agentRole: (agentRow?.role as string) || 'general',
     capabilities: (agentRow?.capabilities as string) || null,
@@ -211,13 +445,34 @@ export async function spawnClaudeLocal(
     companyDescription: (agentRow?.company_desc as string) || null,
     routineTitle: (routineRow?.title as string) || null,
     routineDescription: (routineRow?.description as string) || null,
+    contextCapsule: (agentRow?.context_capsule as string) || null,
   };
 
-  // Build enriched system prompt
-  const systemPrompt = buildSystemPrompt(ctx, prompt);
+  // Fetch unconsumed signals for this agent (last 24h, max 10)
+  interface SignalRow {
+    id: string;
+    source_agent_name: string;
+    signal_type: string;
+    title: string;
+    payload: string;
+  }
+  const incomingSignals = all<SignalRow>(
+    `SELECT id, source_agent_name, signal_type, title, payload FROM signals
+     WHERE company_id = ?
+       AND consumed_by NOT LIKE ?
+       AND created_at > datetime('now', '-24 hours')
+     ORDER BY created_at DESC LIMIT 10`,
+    [companyId, `%"${agentId}"%`]
+  );
+
+  // Build enriched system prompt (with signal injection)
+  const systemPrompt = buildSystemPrompt(ctx, prompt, incomingSignals);
 
   // Build skill directory for --add-dir
   const skillDir = buildSkillDir(ctx);
+
+  // Set up shared workspace for inter-agent file communication
+  const workspacePath = ensureWorkspace(companyId, agentSlug);
 
   // Validate working directory exists before proceeding
   if (workingDirectory) {
@@ -283,13 +538,16 @@ export async function spawnClaudeLocal(
 
   pushToAgent(agentId, { type: 'status', agentId, status: 'running', runId });
 
+  const workspaceInstruction = `\n\n## Shared Workspace\nYour shared workspace is available at: ${workspacePath}\nWrite reports and outputs to: ${workspacePath}/reports/${agentSlug}/\nRead context capsule from: ${workspacePath}/context/${agentSlug}.md\nCross-agent signals are written to: ${workspacePath}/reports/_synergy/signals.jsonl`;
+
   const args = [
     '--model', model,
     '--print',
     '--verbose',
     '--output-format', 'stream-json',
     '--add-dir', skillDir,
-    '-p', systemPrompt,
+    '--add-dir', workspacePath,
+    '-p', systemPrompt + workspaceInstruction,
   ];
 
   const child = spawn('claude', args, {
@@ -299,6 +557,7 @@ export async function spawnClaudeLocal(
   });
 
   const logLines: string[] = [];
+  const plainTextLines: string[] = []; // accumulate non-stream-json lines for output parsing
   let inputTokens = 0;
   let outputTokens = 0;
   let errorOutput = '';
@@ -317,6 +576,7 @@ export async function spawnClaudeLocal(
         timestamp: new Date().toISOString(),
       });
 
+      let isStreamJson = false;
       try {
         const parsed = JSON.parse(line) as StreamJsonChunk;
 
@@ -324,14 +584,72 @@ export async function spawnClaudeLocal(
         if (parsed.type === 'message_start' && parsed.message?.usage) {
           inputTokens = parsed.message.usage.input_tokens ?? inputTokens;
           outputTokens = parsed.message.usage.output_tokens ?? outputTokens;
+          isStreamJson = true;
         } else if (parsed.type === 'message_delta' && parsed.usage) {
           outputTokens = parsed.usage.output_tokens ?? outputTokens;
+          isStreamJson = true;
         } else if (parsed.usage) {
           inputTokens = parsed.usage.input_tokens ?? inputTokens;
           outputTokens = parsed.usage.output_tokens ?? outputTokens;
+          isStreamJson = true;
+        } else if (parsed.type) {
+          // Other stream-json protocol events (content_block_start, etc.)
+          isStreamJson = true;
         }
       } catch {
         // Not JSON — plain text output line
+      }
+
+      // Accumulate non-stream lines for structured output parsing
+      if (!isStreamJson) {
+        plainTextLines.push(line);
+
+        // Parse __agist_signal markers from plain text output
+        if (line.includes('__agist_signal')) {
+          try {
+            // Attempt to extract JSON object containing __agist_signal key
+            const jsonMatch = line.match(/\{.*"__agist_signal".*\}/s);
+            if (jsonMatch) {
+              const outer = JSON.parse(jsonMatch[0]) as {
+                __agist_signal?: {
+                  type?: string;
+                  title?: string;
+                  payload?: Record<string, unknown>;
+                };
+              };
+              const sig = outer.__agist_signal;
+              if (sig?.type && sig?.title) {
+                const agentNameForSignal = ctx.agentName;
+                const sigId = nanoid();
+                run(
+                  `INSERT INTO signals (id, company_id, source_agent_id, source_agent_name, signal_type, title, payload, consumed_by, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, '[]', datetime('now'))`,
+                  [sigId, companyId, agentId, agentNameForSignal, sig.type, sig.title, JSON.stringify(sig.payload ?? {})]
+                );
+                const newSigRow = get<Record<string, unknown>>(`SELECT * FROM signals WHERE id = ?`, [sigId]);
+                if (newSigRow) {
+                  broadcast({
+                    type: 'signal.created',
+                    data: {
+                      id: newSigRow.id,
+                      companyId: newSigRow.company_id,
+                      sourceAgentId: newSigRow.source_agent_id,
+                      sourceAgentName: newSigRow.source_agent_name,
+                      signalType: newSigRow.signal_type,
+                      title: newSigRow.title,
+                      payload: JSON.parse(newSigRow.payload as string || '{}') as Record<string, unknown>,
+                      consumedBy: [],
+                      createdAt: newSigRow.created_at,
+                    },
+                  });
+                }
+                logger.info('Agent emitted signal', { agentId, runId, signalType: sig.type, title: sig.title });
+              }
+            }
+          } catch (sigParseErr) {
+            logger.warn('Failed to parse __agist_signal', { agentId, runId, error: String(sigParseErr) });
+          }
+        }
       }
     }
   });
@@ -431,6 +749,40 @@ export async function spawnClaudeLocal(
       // Cleanup temp skill directory
       try { rmSync(skillDir, { recursive: true, force: true }); } catch { /* ignore */ }
 
+      // Mark injected signals as consumed by this agent
+      if (incomingSignals.length > 0) {
+        for (const sig of incomingSignals) {
+          try {
+            const sigRow = get<{ consumed_by: string }>(`SELECT consumed_by FROM signals WHERE id = ?`, [sig.id]);
+            if (sigRow) {
+              let consumedBy: string[] = [];
+              try { consumedBy = JSON.parse(sigRow.consumed_by) as string[]; } catch { consumedBy = []; }
+              if (!consumedBy.includes(agentId)) {
+                consumedBy.push(agentId);
+                run(`UPDATE signals SET consumed_by = ? WHERE id = ?`, [JSON.stringify(consumedBy), sig.id]);
+              }
+            }
+          } catch (consumeErr) {
+            logger.warn('Failed to mark signal consumed', { agentId, signalId: sig.id, error: String(consumeErr) });
+          }
+        }
+      }
+
+      // Parse and persist context update if agent emitted one
+      const fullOutput = logLines.join('\n');
+      const updatedCapsule = parseContextUpdate(fullOutput);
+      if (updatedCapsule) {
+        try {
+          run(
+            `UPDATE agents SET context_capsule = ?, updated_at = ? WHERE id = ?`,
+            [updatedCapsule, finishedAt, agentId]
+          );
+          logger.info('Context capsule updated from run output', { agentId, runId, capsuleLength: updatedCapsule.length });
+        } catch (capsuleErr) {
+          logger.error('Failed to persist context capsule', { agentId, runId, error: capsuleErr });
+        }
+      }
+
       const agentStatus = 'idle';
       // Update agent status and spent in a single statement (avoids double-spend)
       run(
@@ -443,6 +795,43 @@ export async function spawnClaudeLocal(
         `UPDATE companies SET spent_monthly_cents = spent_monthly_cents + ?, updated_at = ? WHERE id = ?`,
         [costCents, finishedAt, companyId]
       );
+
+      // Parse structured outputs from agent stdout
+      try {
+        const fullText = plainTextLines.join('\n');
+        const parsedOutputs = parseAgentOutputs(fullText);
+        if (parsedOutputs.length > 0) {
+          const outputAt = new Date().toISOString();
+          for (const output of parsedOutputs) {
+            run(
+              `INSERT INTO run_outputs (id, run_id, agent_id, output_type, data, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)`,
+              [output.id, runId, agentId, output.type, JSON.stringify(output.data), outputAt]
+            );
+          }
+          logger.info('Parsed structured outputs from run', { runId, agentId, count: parsedOutputs.length });
+        }
+      } catch (parseErr) {
+        logger.warn('Failed to parse structured outputs', { runId, agentId, error: String(parseErr) });
+      }
+
+      // Wake chain: if run completed successfully, parse and execute any __agist_wake requests
+      if (exitCode === 0) {
+        const wakeChains = parseWakeChains(plainTextLines.join('\n'));
+        if (wakeChains.length > 0) {
+          logger.info('Wake chain: found wake requests in run output', { runId, agentId, count: wakeChains.length });
+          // Fire-and-forget — don't await
+          executeWakeChains(
+            wakeChains,
+            agentId,
+            agentSlug,
+            companyId,
+            options.chainDepth ?? 0
+          ).catch((err: unknown) => {
+            logger.error('Wake chain: executeWakeChains error', { runId, agentId, error: String(err) });
+          });
+        }
+      }
 
       incRun(status);
       addTokens(inputTokens, outputTokens);

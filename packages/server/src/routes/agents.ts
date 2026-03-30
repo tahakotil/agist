@@ -8,6 +8,7 @@ import { spawnClaudeLocal } from '../adapter.js';
 import { broadcast } from '../sse.js';
 import { getPaginationParams, paginatedResponse } from '../utils/pagination.js';
 import { requireRole } from '../middleware/rbac.js';
+import { slugify } from '../workspace.js';
 
 export const agentsRouter = new Hono();
 
@@ -35,6 +36,7 @@ interface AgentRow {
   id: string;
   company_id: string;
   name: string;
+  slug: string | null;
   role: string;
   title: string;
   model: string;
@@ -46,6 +48,7 @@ interface AgentRow {
   working_directory: string | null;
   project_id: string | null;
   tags: string;
+  context_capsule: string;
   budget_monthly_cents: number;
   spent_monthly_cents: number;
   created_at: string;
@@ -57,6 +60,7 @@ function rowToAgent(row: AgentRow) {
     id: row.id,
     companyId: row.company_id,
     name: row.name,
+    slug: row.slug ?? slugify(row.name),
     role: row.role,
     title: row.title,
     model: row.model,
@@ -82,6 +86,7 @@ function rowToAgent(row: AgentRow) {
     tags: row.tags
       ? row.tags.split(',').map((t) => t.trim()).filter(Boolean)
       : [],
+    contextCapsule: row.context_capsule ?? '',
     budgetMonthlyCents: row.budget_monthly_cents,
     spentMonthlyCents: row.spent_monthly_cents,
     createdAt: row.created_at,
@@ -265,15 +270,24 @@ agentsRouter.post(
     const now = new Date().toISOString();
     const id = nanoid();
 
+    // Generate unique slug within the company
+    const baseSlug = slugify(body.name);
+    let slug = baseSlug;
+    let slugCounter = 1;
+    while (get(`SELECT id FROM agents WHERE company_id = ? AND slug = ?`, [companyId, slug])) {
+      slug = `${baseSlug}-${slugCounter++}`;
+    }
+
     run(
-      `INSERT INTO agents (id, company_id, name, role, title, model, capabilities, status,
+      `INSERT INTO agents (id, company_id, name, slug, role, title, model, capabilities, status,
        reports_to, adapter_type, adapter_config, working_directory, project_id, tags,
        budget_monthly_cents, spent_monthly_cents, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
       [
         id,
         companyId,
         body.name,
+        slug,
         body.role,
         body.title,
         body.model,
@@ -296,6 +310,112 @@ agentsRouter.post(
     return c.json({ agent: rowToAgent(row!) }, 201);
   }
 );
+
+// ─── Wake chain wake schema (shared) ──────────────────────────────────────────
+const wakeChainBodySchema = z.object({
+  prompt: z.string().max(10_000, 'Prompt must be 10,000 characters or fewer').optional(),
+  source: z.string().max(200).optional(),
+  chainDepth: z.number().int().min(0).max(100).optional(),
+});
+
+// GET /api/agents/by-slug/:slug — find agent by slug (MUST be before /:id)
+agentsRouter.get('/api/agents/by-slug/:slug', (c) => {
+  const slug = c.req.param('slug');
+  const rows = all<AgentRow & { company_name: string }>(
+    `SELECT a.*, c.name as company_name
+     FROM agents a
+     LEFT JOIN companies c ON c.id = a.company_id
+     WHERE a.slug = ?`,
+    [slug]
+  );
+  const row = rows[0];
+
+  if (!row) {
+    return c.json({ error: 'Agent not found' }, 404);
+  }
+
+  return c.json({ agent: { ...rowToAgent(row), companyName: row.company_name ?? '' } });
+});
+
+// POST /api/agents/by-slug/:slug/wake — wake agent by slug (MUST be before /:id)
+agentsRouter.post('/api/agents/by-slug/:slug/wake', requireRole('admin'), async (c) => {
+  const slug = c.req.param('slug');
+
+  const agent = get<AgentRow>(`SELECT * FROM agents WHERE slug = ?`, [slug]);
+
+  if (!agent) {
+    return c.json({ error: 'Agent not found' }, 404);
+  }
+
+  if (agent.status === 'running') {
+    return c.json({ error: 'Agent is already running' }, 409);
+  }
+
+  // Parse optional body
+  let bodyPrompt: string | undefined;
+  let bodySource: string | undefined;
+  let bodyChainDepth: number = 0;
+  try {
+    const raw = await c.req.json().catch(() => ({}));
+    const parsed = wakeChainBodySchema.safeParse(raw);
+    if (parsed.success) {
+      bodyPrompt = parsed.data.prompt;
+      bodySource = parsed.data.source;
+      bodyChainDepth = parsed.data.chainDepth ?? 0;
+    }
+  } catch {
+    // ignore body parse errors
+  }
+
+  const MAX_CHAIN_DEPTH = 5;
+  if (bodyChainDepth >= MAX_CHAIN_DEPTH) {
+    return c.json({
+      error: `Chain depth limit reached (max ${MAX_CHAIN_DEPTH}). Cannot wake agent at depth ${bodyChainDepth}.`,
+      chainDepth: bodyChainDepth,
+    }, 429);
+  }
+
+  const runId = nanoid();
+  const now = new Date().toISOString();
+  const source = bodySource ?? 'manual';
+
+  run(
+    `INSERT INTO runs (id, agent_id, company_id, routine_id, status, model, source, chain_depth, created_at)
+     VALUES (?, ?, ?, NULL, 'queued', ?, ?, ?, ?)`,
+    [runId, agent.id, agent.company_id, agent.model, source, bodyChainDepth, now]
+  );
+
+  const adapterConfig = (() => {
+    try {
+      return JSON.parse(agent.adapter_config) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  })();
+
+  const prompt =
+    bodyPrompt ??
+    (adapterConfig['defaultPrompt'] as string | undefined) ??
+    `You are ${agent.name}, ${agent.title}. Perform your next task.`;
+
+  // Fire-and-forget
+  spawnClaudeLocal({
+    runId,
+    agentId: agent.id,
+    companyId: agent.company_id,
+    model: agent.model,
+    prompt,
+    workingDirectory: agent.working_directory ?? null,
+    adapterConfig,
+    adapterType: agent.adapter_type,
+    chainDepth: bodyChainDepth,
+    sourceAgentSlug: source.startsWith('chain:') ? source.slice(6) : undefined,
+  }).catch((err: unknown) => {
+    console.error(`[wake-by-slug] Adapter error for agent ${agent.slug}:`, err);
+  });
+
+  return c.json({ run: { id: runId, agentId: agent.id, agentSlug: slug, status: 'queued', chainDepth: bodyChainDepth } }, 202);
+});
 
 // GET /api/agents/:id
 agentsRouter.get('/api/agents/:id', (c) => {
@@ -437,11 +557,16 @@ agentsRouter.delete('/api/agents/:id', requireRole('admin'), (c) => {
 const wakeSchema = z.object({
   // Prompt is optional but capped at 10,000 chars to prevent abuse
   prompt: z.string().max(10_000, 'Prompt must be 10,000 characters or fewer').optional(),
+  // source: used for chain wakes ('chain:{slug}') or 'manual'
+  source: z.string().max(200).optional(),
+  // chainDepth: increments with each chain hop (max 5)
+  chainDepth: z.number().int().min(0).max(100).optional(),
 });
 
 // In-memory rate limit: agentId -> last wake timestamp (ms)
 const wakeRateLimit = new Map<string, number>();
 const WAKE_COOLDOWN_MS = 10_000; // 10 seconds
+const MAX_CHAIN_DEPTH = 5;
 
 // POST /api/agents/:id/wake — manual trigger (admin only)
 agentsRouter.post('/api/agents/:id/wake', requireRole('admin'), async (c) => {
@@ -479,21 +604,36 @@ agentsRouter.post('/api/agents/:id/wake', requireRole('admin'), async (c) => {
 
   // Parse optional body (may be empty)
   let bodyPrompt: string | undefined;
+  let bodySource: string | undefined;
+  let bodyChainDepth: number = 0;
   try {
     const raw = await c.req.json().catch(() => ({}));
     const parsed = wakeSchema.safeParse(raw);
-    if (parsed.success) bodyPrompt = parsed.data.prompt;
+    if (parsed.success) {
+      bodyPrompt = parsed.data.prompt;
+      bodySource = parsed.data.source;
+      bodyChainDepth = parsed.data.chainDepth ?? 0;
+    }
   } catch {
     // ignore body parse errors
   }
 
+  // Chain depth guard
+  if (bodyChainDepth >= MAX_CHAIN_DEPTH) {
+    return c.json({
+      error: `Chain depth limit reached (max ${MAX_CHAIN_DEPTH}). Cannot wake agent at depth ${bodyChainDepth}.`,
+      chainDepth: bodyChainDepth,
+    }, 429);
+  }
+
   const runId = nanoid();
   const now = new Date().toISOString();
+  const source = bodySource ?? 'manual';
 
   run(
-    `INSERT INTO runs (id, agent_id, company_id, routine_id, status, model, source, created_at)
-     VALUES (?, ?, ?, NULL, 'queued', ?, 'manual', ?)`,
-    [runId, agent.id, agent.company_id, agent.model, now]
+    `INSERT INTO runs (id, agent_id, company_id, routine_id, status, model, source, chain_depth, created_at)
+     VALUES (?, ?, ?, NULL, 'queued', ?, ?, ?, ?)`,
+    [runId, agent.id, agent.company_id, agent.model, source, bodyChainDepth, now]
   );
 
   const adapterConfig = (() => {
@@ -519,11 +659,45 @@ agentsRouter.post('/api/agents/:id/wake', requireRole('admin'), async (c) => {
     workingDirectory: agent.working_directory ?? null,
     adapterConfig,
     adapterType: agent.adapter_type,
+    chainDepth: bodyChainDepth,
+    sourceAgentSlug: source.startsWith('chain:') ? source.slice(6) : undefined,
   }).catch((err: unknown) => {
     console.error(`[wake] Adapter error for agent ${agent.id}:`, err);
   });
 
-  return c.json({ run: { id: runId, agentId: id, status: 'queued' } }, 202);
+  return c.json({ run: { id: runId, agentId: id, status: 'queued', chainDepth: bodyChainDepth } }, 202);
+});
+
+// GET /api/agents/:id/context — get context capsule
+agentsRouter.get('/api/agents/:id/context', (c) => {
+  const id = c.req.param('id');
+
+  const row = get<AgentRow>(`SELECT * FROM agents WHERE id = ?`, [id]);
+  if (!row) {
+    return c.json({ error: 'Agent not found' }, 404);
+  }
+
+  return c.json({ capsule: row.context_capsule ?? '' });
+});
+
+const contextUpdateSchema = z.object({
+  capsule: z.string().max(10_000, 'Context capsule must be 10,000 characters or fewer'),
+});
+
+// PUT /api/agents/:id/context — update context capsule
+agentsRouter.put('/api/agents/:id/context', requireRole('admin'), zValidator('json', contextUpdateSchema), (c) => {
+  const id = c.req.param('id');
+  const { capsule } = c.req.valid('json');
+
+  const existing = get<AgentRow>(`SELECT id FROM agents WHERE id = ?`, [id]);
+  if (!existing) {
+    return c.json({ error: 'Agent not found' }, 404);
+  }
+
+  const now = new Date().toISOString();
+  run(`UPDATE agents SET context_capsule = ?, updated_at = ? WHERE id = ?`, [capsule, now, id]);
+
+  return c.json({ capsule });
 });
 
 // DELETE /api/agents/:id/runs — bulk run cleanup

@@ -1,8 +1,8 @@
 "use client"
 
-import { use } from "react"
+import { use, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { getRun, type Run } from "@/lib/api"
+import { getRun, getRunOutputs, type Run, type RunOutput } from "@/lib/api"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { buttonVariants } from "@/components/ui/button"
@@ -17,6 +17,14 @@ import {
   Timer,
   DollarSign,
   Bot,
+  ChevronDown,
+  ChevronRight,
+  Activity,
+  BarChart2,
+  Search,
+  AlertTriangle,
+  FileText,
+  Zap,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -33,12 +41,133 @@ const RUN_STATUS_BADGE: Record<string, string> = {
   timeout: "bg-orange-500/15 text-orange-400 border-orange-500/30",
 }
 
+const OUTPUT_TYPE_CONFIG: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
+  health: {
+    label: "Health",
+    className: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+    icon: <Activity className="h-3 w-3" />,
+  },
+  analytics: {
+    label: "Analytics",
+    className: "bg-blue-500/15 text-blue-400 border-blue-500/30",
+    icon: <BarChart2 className="h-3 w-3" />,
+  },
+  seo: {
+    label: "SEO",
+    className: "bg-violet-500/15 text-violet-400 border-violet-500/30",
+    icon: <Search className="h-3 w-3" />,
+  },
+  alert: {
+    label: "Alert",
+    className: "bg-red-500/15 text-red-400 border-red-500/30",
+    icon: <AlertTriangle className="h-3 w-3" />,
+  },
+  report: {
+    label: "Report",
+    className: "bg-slate-500/15 text-slate-400 border-slate-500/30",
+    icon: <FileText className="h-3 w-3" />,
+  },
+  content: {
+    label: "Content",
+    className: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+    icon: <FileText className="h-3 w-3" />,
+  },
+}
+
+const CHECK_STATUS_CLASS: Record<string, string> = {
+  PASS: "text-emerald-400",
+  WARN: "text-amber-400",
+  WARNING: "text-amber-400",
+  CRITICAL: "text-red-400",
+  FAIL: "text-red-400",
+  ERROR: "text-red-400",
+  OK: "text-emerald-400",
+}
+
+function OutputCard({ output }: { output: RunOutput }) {
+  const [expanded, setExpanded] = useState(false)
+  const config = OUTPUT_TYPE_CONFIG[output.outputType] ?? OUTPUT_TYPE_CONFIG["report"]
+  const data = output.data
+
+  // Extract top-level status string if present
+  const topStatus = (data.status as string) ?? (data.overall_status as string) ?? null
+  const topStatusClass = topStatus ? (CHECK_STATUS_CLASS[topStatus.toUpperCase()] ?? "text-slate-300") : null
+
+  // Extract checks array for health reports
+  const checks = Array.isArray(data.checks) ? (data.checks as Record<string, unknown>[]) : null
+
+  return (
+    <Card className="bg-slate-900 border-slate-800">
+      <CardContent className="p-0">
+        <button
+          className="w-full flex items-center gap-3 p-4 text-left hover:bg-slate-800/50 transition-colors rounded-lg"
+          onClick={() => setExpanded((e) => !e)}
+        >
+          {expanded ? (
+            <ChevronDown className="h-4 w-4 text-slate-500 flex-shrink-0" />
+          ) : (
+            <ChevronRight className="h-4 w-4 text-slate-500 flex-shrink-0" />
+          )}
+          <Badge className={cn("border text-[11px] flex items-center gap-1", config.className)}>
+            {config.icon}
+            {config.label}
+          </Badge>
+          {topStatus && (
+            <span className={cn("text-xs font-mono font-semibold", topStatusClass)}>
+              {topStatus}
+            </span>
+          )}
+          <span className="text-xs text-slate-500 ml-auto">{relativeTime(output.createdAt)}</span>
+        </button>
+
+        {expanded && (
+          <div className="px-4 pb-4 space-y-3 border-t border-slate-800 pt-3">
+            {/* Health checks inline display */}
+            {checks && checks.length > 0 && (
+              <div className="space-y-1.5">
+                {checks.map((check, i) => {
+                  const checkStatus = ((check.status as string) ?? "").toUpperCase()
+                  const statusClass = CHECK_STATUS_CLASS[checkStatus] ?? "text-slate-400"
+                  return (
+                    <div key={i} className="flex items-center gap-2 text-xs">
+                      <span className={cn("font-mono font-semibold w-16 flex-shrink-0", statusClass)}>
+                        {checkStatus || "—"}
+                      </span>
+                      <span className="text-slate-300">{(check.name as string) ?? (check.check as string) ?? `Check ${i + 1}`}</span>
+                      {check.message && (
+                        <span className="text-slate-500 truncate">{check.message as string}</span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Raw JSON display */}
+            <div className="rounded border border-slate-800 bg-slate-950 p-3 max-h-[320px] overflow-y-auto">
+              <pre className="text-[11px] font-mono text-slate-300 whitespace-pre-wrap break-all leading-5">
+                {JSON.stringify(data, null, 2)}
+              </pre>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 export default function RunDetailPage({ params }: PageProps) {
   const { id } = use(params)
 
   const { data: run, isLoading } = useQuery<Run>({
     queryKey: ["runs", id],
     queryFn: () => getRun(id),
+  })
+
+  const { data: outputs } = useQuery<RunOutput[]>({
+    queryKey: ["runs", id, "outputs"],
+    queryFn: () => getRunOutputs(id),
+    enabled: !!run,
   })
 
   if (isLoading) {
@@ -108,6 +237,24 @@ export default function RunDetailPage({ params }: PageProps) {
             <Link href={`/companies/${run.companyId}`} className="hover:text-slate-300 transition-colors">
               {run.companyName}
             </Link>
+            {run.source.startsWith("chain:") && (
+              <>
+                <span className="text-slate-700">·</span>
+                <div className="flex items-center gap-1.5 text-amber-400">
+                  <Zap className="h-3.5 w-3.5" />
+                  <span>Triggered by <span className="font-mono">{run.source.slice(6)}</span></span>
+                  {(run.chainDepth ?? 0) > 0 && (
+                    <span className="text-slate-600">· depth {run.chainDepth}</span>
+                  )}
+                </div>
+              </>
+            )}
+            {run.source === "scheduler" || run.source === "routine" ? (
+              <>
+                <span className="text-slate-700">·</span>
+                <span className="text-blue-400">Scheduled</span>
+              </>
+            ) : null}
           </div>
         </div>
       </div>
@@ -186,6 +333,21 @@ export default function RunDetailPage({ params }: PageProps) {
           </div>
         )}
       </section>
+
+      {/* Parsed Outputs */}
+      {outputs && outputs.length > 0 && (
+        <section>
+          <h2 className="text-lg font-semibold text-slate-100 mb-4">
+            Parsed Outputs
+            <span className="ml-2 text-sm font-normal text-slate-500">({outputs.length})</span>
+          </h2>
+          <div className="space-y-3">
+            {outputs.map((output) => (
+              <OutputCard key={output.id} output={output} />
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   )
 }

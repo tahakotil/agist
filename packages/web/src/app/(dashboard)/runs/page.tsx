@@ -26,6 +26,29 @@ const RUN_STATUS_BADGE: Record<string, string> = {
   timeout: "bg-orange-500/15 text-orange-400 border-orange-500/30",
 }
 
+function SourceBadge({ source }: { source: string }) {
+  if (source.startsWith("chain:")) {
+    const from = source.slice(6) || "unknown"
+    return (
+      <Badge className="text-[10px] px-1.5 py-0 h-4 border bg-amber-500/15 text-amber-400 border-amber-500/30 font-mono">
+        ⚡ {from}
+      </Badge>
+    )
+  }
+  if (source === "scheduler" || source === "routine") {
+    return (
+      <Badge className="text-[10px] px-1.5 py-0 h-4 border bg-blue-500/15 text-blue-400 border-blue-500/30">
+        Scheduler
+      </Badge>
+    )
+  }
+  return (
+    <Badge className="text-[10px] px-1.5 py-0 h-4 border bg-slate-500/15 text-slate-400 border-slate-500/30">
+      Manual
+    </Badge>
+  )
+}
+
 const STATUS_ICON: Record<string, React.ReactNode> = {
   completed: <CheckCircle className="h-4 w-4 text-emerald-400" />,
   failed: <XCircle className="h-4 w-4 text-red-400" />,
@@ -61,6 +84,7 @@ export default function RunsPage() {
               <TableHead className="text-slate-500 text-xs pl-6 w-8" />
               <TableHead className="text-slate-500 text-xs">Agent</TableHead>
               <TableHead className="text-slate-500 text-xs">Company</TableHead>
+              <TableHead className="text-slate-500 text-xs">Source</TableHead>
               <TableHead className="text-slate-500 text-xs">Status</TableHead>
               <TableHead className="text-slate-500 text-xs">Duration</TableHead>
               <TableHead className="text-slate-500 text-xs">Cost</TableHead>
@@ -71,7 +95,7 @@ export default function RunsPage() {
             {isLoading ? (
               Array.from({ length: 8 }).map((_, i) => (
                 <TableRow key={i} className="border-slate-800">
-                  {Array.from({ length: 7 }).map((__, j) => (
+                  {Array.from({ length: 8 }).map((__, j) => (
                     <TableCell key={j} className="py-4">
                       <div className="h-4 bg-slate-800 rounded animate-pulse" />
                     </TableCell>
@@ -104,6 +128,9 @@ export default function RunsPage() {
                     </Link>
                   </TableCell>
                   <TableCell className="py-4">
+                    <SourceBadge source={run.source} />
+                  </TableCell>
+                  <TableCell className="py-4">
                     <Badge
                       className={cn(
                         "text-[10px] px-1.5 py-0 h-4 border capitalize",
@@ -132,7 +159,7 @@ export default function RunsPage() {
               ))
             ) : (
               <TableRow className="border-0">
-                <TableCell colSpan={7} className="text-center text-slate-600 py-16 text-sm">
+                <TableCell colSpan={8} className="text-center text-slate-600 py-16 text-sm">
                   No runs found
                 </TableCell>
               </TableRow>

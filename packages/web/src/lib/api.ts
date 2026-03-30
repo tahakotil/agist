@@ -76,6 +76,7 @@ export interface Agent {
   adapterType: string;
   adapterConfig: Record<string, unknown>;
   workingDirectory?: string | null;
+  contextCapsule?: string;
   budgetMonthlyCents: number;
   spentMonthlyCents: number;
   createdAt: string;
@@ -92,6 +93,7 @@ export interface Run {
   status: RunStatus;
   model: string;
   source: string;
+  chainDepth: number;
   startedAt: string;
   finishedAt?: string | null;
   exitCode?: number | null;
@@ -263,6 +265,17 @@ export async function updateAgent(
 
 export async function deleteAgent(id: string): Promise<void> {
   await api(`/agents/${id}`, { method: "DELETE" });
+}
+
+export async function getAgentContext(id: string): Promise<{ capsule: string }> {
+  return api<{ capsule: string }>(`/agents/${id}/context`);
+}
+
+export async function updateAgentContext(id: string, capsule: string): Promise<void> {
+  await api(`/agents/${id}/context`, {
+    method: "PUT",
+    body: JSON.stringify({ capsule }),
+  });
 }
 
 export async function wakeAgent(
@@ -510,4 +523,153 @@ export async function updateProject(
 
 export async function deleteProject(id: string): Promise<void> {
   await api(`/projects/${id}`, { method: "DELETE" });
+}
+
+// ─── Signals ──────────────────────────────────────────────────────────────────
+export interface Signal {
+  id: string;
+  companyId: string;
+  sourceAgentId: string;
+  sourceAgentName: string;
+  signalType: string;
+  title: string;
+  payload: Record<string, unknown>;
+  consumedBy: string[];
+  createdAt: string;
+}
+
+export interface SignalListParams {
+  type?: string;
+  since?: string;
+  limit?: number;
+}
+
+export async function getCompanySignals(
+  companyId: string,
+  params?: SignalListParams
+): Promise<Signal[]> {
+  const res = await api<{ signals: Signal[] }>(
+    `/companies/${companyId}/signals${buildQs(params ?? {})}`
+  );
+  return res.signals;
+}
+
+export async function getUnconsumedSignals(
+  companyId: string,
+  agentId: string
+): Promise<Signal[]> {
+  const res = await api<{ signals: Signal[] }>(
+    `/companies/${companyId}/signals/unconsumed/${agentId}`
+  );
+  return res.signals;
+}
+
+export async function createSignal(
+  companyId: string,
+  data: {
+    source_agent_id: string;
+    signal_type: string;
+    title: string;
+    payload?: Record<string, unknown>;
+  }
+): Promise<Signal> {
+  const res = await api<{ signal: Signal }>(`/companies/${companyId}/signals`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  return res.signal;
+}
+
+export async function consumeSignal(
+  companyId: string,
+  signalId: string,
+  agentId: string
+): Promise<void> {
+  await api(`/companies/${companyId}/signals/${signalId}/consume`, {
+    method: "POST",
+    body: JSON.stringify({ agent_id: agentId }),
+  });
+}
+
+// ─── Workspace ─────────────────────────────────────────────────────────────────
+export interface ReportDirEntry {
+  slug: string;
+  fileCount: number;
+}
+
+export interface ReportFileEntry {
+  name: string;
+  size: number;
+  modifiedAt: string;
+}
+
+export async function getWorkspaceReports(companyId: string): Promise<ReportDirEntry[]> {
+  const res = await api<{ reports: ReportDirEntry[] }>(`/companies/${companyId}/workspace/reports`);
+  return res.reports;
+}
+
+export async function getAgentReportFiles(companyId: string, agentSlug: string): Promise<ReportFileEntry[]> {
+  const res = await api<{ agentSlug: string; files: ReportFileEntry[] }>(
+    `/companies/${companyId}/workspace/reports/${encodeURIComponent(agentSlug)}`
+  );
+  return res.files;
+}
+
+export async function getReportFileContent(
+  companyId: string,
+  agentSlug: string,
+  filename: string
+): Promise<string> {
+  const res = await api<{ agentSlug: string; filename: string; content: string }>(
+    `/companies/${companyId}/workspace/reports/${encodeURIComponent(agentSlug)}/${encodeURIComponent(filename)}`
+  );
+  return res.content;
+}
+
+export async function getWorkspaceSynergy(companyId: string): Promise<unknown[]> {
+  const res = await api<{ signals: unknown[] }>(`/companies/${companyId}/workspace/synergy`);
+  return res.signals;
+}
+
+export async function getContextCapsule(companyId: string, agentSlug: string): Promise<string> {
+  const res = await api<{ agentSlug: string; content: string }>(
+    `/companies/${companyId}/workspace/context/${encodeURIComponent(agentSlug)}`
+  );
+  return res.content;
+}
+
+export async function updateContextCapsule(
+  companyId: string,
+  agentSlug: string,
+  content: string
+): Promise<void> {
+  await api(`/companies/${companyId}/workspace/context/${encodeURIComponent(agentSlug)}`, {
+    method: "PUT",
+    body: JSON.stringify({ content }),
+  });
+}
+
+// ─── Run Outputs ────────────────────────────────────────────────────────────────
+export interface RunOutput {
+  id: string;
+  runId: string;
+  agentId: string;
+  outputType: string;
+  data: Record<string, unknown>;
+  createdAt: string;
+}
+
+export async function getRunOutputs(runId: string): Promise<RunOutput[]> {
+  const res = await api<{ outputs: RunOutput[] }>(`/runs/${runId}/outputs`);
+  return res.outputs;
+}
+
+export async function getAgentOutputs(agentId: string, limit = 50): Promise<RunOutput[]> {
+  const res = await api<{ outputs: RunOutput[] }>(`/agents/${agentId}/outputs?limit=${limit}`);
+  return res.outputs;
+}
+
+export async function getAgentLatestOutput(agentId: string): Promise<RunOutput | null> {
+  const res = await api<{ output: RunOutput | null }>(`/agents/${agentId}/outputs/latest`);
+  return res.output;
 }

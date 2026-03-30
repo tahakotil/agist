@@ -45,6 +45,7 @@ export interface Agent {
   id: string;
   companyId: string;
   name: string;
+  slug: string;
   role: AgentRole;
   title: string | null;
   model: string | null; // claude-haiku-4-5-20251001, claude-sonnet-4-6, claude-opus-4-6
@@ -56,6 +57,7 @@ export interface Agent {
   workingDirectory?: string | null; // absolute path to project directory
   projectId?: string | null;
   tags?: string[]; // free-form tags for grouping/filtering
+  contextCapsule?: string; // persistent agent memory/context
   budgetMonthlyCents: number;
   spentMonthlyCents: number;
   createdAt: string;
@@ -95,7 +97,8 @@ export interface Run {
   routineId: string | null;
   status: RunStatus;
   model: string | null;
-  source: string; // "schedule" | "manual" | "event"
+  source: string; // "manual" | "scheduler" | "chain:{source-agent-slug}"
+  chainDepth: number; // 0 = direct, increments with each chain hop
   startedAt: string | null;
   finishedAt: string | null;
   exitCode: number | null;
@@ -104,6 +107,29 @@ export interface Run {
   tokenOutput: number;
   costCents: number;
   logExcerpt: string | null;
+  createdAt: string;
+}
+
+export interface RunOutput {
+  id: string;
+  runId: string;
+  agentId: string;
+  outputType: string;
+  data: Record<string, unknown>;
+  createdAt: string;
+}
+
+export type SignalType = 'product-update' | 'social-proof' | 'seo-tactic' | 'market-trend' | 'alert' | 'kpi-change';
+
+export interface Signal {
+  id: string;
+  companyId: string;
+  sourceAgentId: string;
+  sourceAgentName: string;
+  signalType: SignalType | string;
+  title: string;
+  payload: Record<string, unknown>;
+  consumedBy: string[];
   createdAt: string;
 }
 
