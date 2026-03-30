@@ -2,7 +2,8 @@ import { Command } from 'commander'
 import chalk from 'chalk'
 import ora from 'ora'
 import { existsSync, readFileSync } from 'fs'
-import { join, homedir } from 'path'
+import { join } from 'path'
+import { homedir } from 'os'
 import type { AgistConfig } from './setup.js'
 
 function loadConfig(): AgistConfig | null {
