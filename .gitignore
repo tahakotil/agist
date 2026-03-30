@@ -13,6 +13,7 @@ dist/
 coverage/
 
 # Claude Code / internal planning (keep local, not in repo)
-CLAUDE.md
+**/CLAUDE.md
+**/AGENTS.md
 PLAN.md
 BACKLOG.md
