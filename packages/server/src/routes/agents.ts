@@ -10,6 +10,7 @@ import { getPaginationParams, paginatedResponse } from '../utils/pagination.js';
 import { requireRole } from '../middleware/rbac.js';
 import { slugify } from '../workspace.js';
 import { audit } from '../audit.js';
+import { validateOutputSchema } from '../parser/parse-output.js';
 
 export const agentsRouter = new Hono();
 
@@ -29,6 +30,8 @@ const createSchema = z.object({
   status: z
     .enum(['idle', 'running', 'paused', 'error', 'budget_exceeded'])
     .default('idle'),
+  /** Optional structured output schema for this agent's runs */
+  outputSchema: z.record(z.unknown()).nullable().optional(),
 });
 
 const updateSchema = createSchema.partial();
@@ -50,6 +53,7 @@ interface AgentRow {
   project_id: string | null;
   tags: string;
   context_capsule: string;
+  output_schema: string | null;
   budget_monthly_cents: number;
   spent_monthly_cents: number;
   created_at: string;
@@ -88,6 +92,13 @@ function rowToAgent(row: AgentRow) {
       ? row.tags.split(',').map((t) => t.trim()).filter(Boolean)
       : [],
     contextCapsule: row.context_capsule ?? '',
+    outputSchema: (() => {
+      try {
+        return row.output_schema ? (JSON.parse(row.output_schema) as Record<string, unknown>) : null;
+      } catch {
+        return null;
+      }
+    })(),
     budgetMonthlyCents: row.budget_monthly_cents,
     spentMonthlyCents: row.spent_monthly_cents,
     createdAt: row.created_at,
@@ -268,6 +279,14 @@ agentsRouter.post(
       }
     }
 
+    // Validate outputSchema if provided
+    if (body.outputSchema != null) {
+      const schemaError = validateOutputSchema(body.outputSchema);
+      if (schemaError) {
+        return c.json({ error: schemaError }, 400);
+      }
+    }
+
     const now = new Date().toISOString();
     const id = nanoid();
 
@@ -282,8 +301,8 @@ agentsRouter.post(
     run(
       `INSERT INTO agents (id, company_id, name, slug, role, title, model, capabilities, status,
        reports_to, adapter_type, adapter_config, working_directory, project_id, tags,
-       budget_monthly_cents, spent_monthly_cents, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+       output_schema, budget_monthly_cents, spent_monthly_cents, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
       [
         id,
         companyId,
@@ -300,6 +319,7 @@ agentsRouter.post(
         body.workingDirectory ?? null,
         body.projectId ?? null,
         body.tags.join(','),
+        body.outputSchema != null ? JSON.stringify(body.outputSchema) : null,
         body.budgetMonthlyCents,
         now,
         now,
@@ -476,6 +496,14 @@ agentsRouter.patch('/api/agents/:id', requireRole('admin'), zValidator('json', u
     }
   }
 
+  // Validate outputSchema if provided
+  if (body.outputSchema != null) {
+    const schemaError = validateOutputSchema(body.outputSchema);
+    if (schemaError) {
+      return c.json({ error: schemaError }, 400);
+    }
+  }
+
   const now = new Date().toISOString();
   const fields: string[] = [];
   const values: unknown[] = [];
@@ -516,6 +544,10 @@ agentsRouter.patch('/api/agents/:id', requireRole('admin'), zValidator('json', u
   if (body.budgetMonthlyCents !== undefined) {
     fields.push('budget_monthly_cents = ?');
     values.push(body.budgetMonthlyCents);
+  }
+  if ('outputSchema' in body) {
+    fields.push('output_schema = ?');
+    values.push(body.outputSchema != null ? JSON.stringify(body.outputSchema) : null);
   }
 
   if (fields.length === 0) {
