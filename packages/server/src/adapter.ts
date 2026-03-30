@@ -16,6 +16,7 @@ import { getAdapter, getDefaultAdapter } from './adapters/index.js';
 import { estimateCostCents } from './adapters/cost.js';
 import { parseAgentOutputs } from './output-parser.js';
 import { ensureWorkspace, slugify } from './workspace.js';
+import { audit } from './audit.js';
 
 const LOG_EXCERPT_MAX_CHARS = 50_000;
 
@@ -53,6 +54,45 @@ interface WakeChainRequest {
 
 /** Matches single-level JSON objects containing __agist_wake key */
 const WAKE_CHAIN_REGEX = /\{"__agist_wake":\s*\{[^}]*\}\}/g;
+
+/** Matches JSON objects containing __agist_approval key */
+const APPROVAL_REGEX = /\{"__agist_approval":\s*\{[^}]*\}\}/g;
+
+interface ApprovalRequest {
+  gate_type: string;
+  title: string;
+  description?: string;
+  payload?: Record<string, unknown>;
+}
+
+/**
+ * Parse __agist_approval markers from agent stdout.
+ * Returns array of approval gate requests, empty if none found.
+ */
+export function parseApprovalRequests(output: string): ApprovalRequest[] {
+  const results: ApprovalRequest[] = [];
+  const matches = output.match(APPROVAL_REGEX);
+  if (!matches) return results;
+
+  for (const match of matches) {
+    try {
+      const parsed = JSON.parse(match) as { __agist_approval?: ApprovalRequest };
+      const req = parsed.__agist_approval;
+      if (req?.gate_type && req?.title) {
+        results.push({
+          gate_type: req.gate_type,
+          title: req.title,
+          description: typeof req.description === 'string' ? req.description : '',
+          payload: typeof req.payload === 'object' && req.payload !== null ? req.payload : {},
+        });
+      }
+    } catch {
+      // Malformed JSON — skip
+    }
+  }
+
+  return results;
+}
 
 /**
  * Parse __agist_wake markers from agent stdout.
@@ -366,6 +406,74 @@ function notifyRunFinished(
   }
 }
 
+/**
+ * Resets spent_monthly_cents to 0 if we've crossed into a new calendar month.
+ * Returns the current month string (e.g. "2025-03").
+ */
+export function maybeResetMonthlySpend(agentId: string): string {
+  const currentMonth = new Date().toISOString().slice(0, 7); // "YYYY-MM"
+
+  const agentRow = get<{ last_reset_month: string | null; spent_monthly_cents: number }>(
+    `SELECT last_reset_month, spent_monthly_cents FROM agents WHERE id = ?`,
+    [agentId]
+  );
+
+  if (!agentRow) return currentMonth;
+
+  if (agentRow.last_reset_month !== currentMonth) {
+    const now = new Date().toISOString();
+    run(
+      `UPDATE agents SET spent_monthly_cents = 0, last_reset_month = ?, updated_at = ? WHERE id = ?`,
+      [currentMonth, now, agentId]
+    );
+    logger.info('Budget: monthly spend reset', { agentId, month: currentMonth });
+  }
+
+  return currentMonth;
+}
+
+/**
+ * Returns null if budget is OK (or unlimited), or an error string if exceeded.
+ */
+export function checkAgentBudget(agentId: string): string | null {
+  maybeResetMonthlySpend(agentId);
+
+  const agentRow = get<{ budget_monthly_cents: number; spent_monthly_cents: number; status: string }>(
+    `SELECT budget_monthly_cents, spent_monthly_cents, status FROM agents WHERE id = ?`,
+    [agentId]
+  );
+
+  if (!agentRow) return null;
+
+  const { budget_monthly_cents, spent_monthly_cents } = agentRow;
+
+  // 0 = unlimited
+  if (budget_monthly_cents === 0) return null;
+
+  if (spent_monthly_cents >= budget_monthly_cents) {
+    // Auto-set status to budget_exceeded if not already set
+    if (agentRow.status !== 'budget_exceeded') {
+      const now = new Date().toISOString();
+      run(
+        `UPDATE agents SET status = 'budget_exceeded', updated_at = ? WHERE id = ?`,
+        [now, agentId]
+      );
+      broadcast({
+        type: 'agent.status',
+        data: { agentId, status: 'budget_exceeded' },
+      });
+      logger.warn('Budget: agent exceeded monthly budget — marking budget_exceeded', {
+        agentId,
+        budgetCents: budget_monthly_cents,
+        spentCents: spent_monthly_cents,
+      });
+    }
+    return `Agent has exceeded its monthly budget (${spent_monthly_cents} / ${budget_monthly_cents} cents)`;
+  }
+
+  return null;
+}
+
 export async function spawnClaudeLocal(
   options: RunAdapterOptions
 ): Promise<void> {
@@ -483,6 +591,10 @@ export async function spawnClaudeLocal(
   incRunsActive();
   logger.info('Run started', { runId, agentId, model });
 
+  // Audit: run started
+  const agentCompanyId = companyId;
+  audit(agentCompanyId, agentId, 'run.started', { runId, model, source: 'adapter' });
+
   broadcast({
     type: 'agent.status',
     data: { agentId, status: 'running', runId },
@@ -555,6 +667,35 @@ export async function spawnClaudeLocal(
       // Accumulate non-stream lines for structured output parsing
       if (!isStreamJson) {
         plainTextLines.push(line);
+
+        // Parse __agist_approval markers from plain text output
+        if (line.includes('__agist_approval')) {
+          try {
+            const jsonMatch = line.match(/\{.*"__agist_approval".*\}/s);
+            if (jsonMatch) {
+              const outer = JSON.parse(jsonMatch[0]) as {
+                __agist_approval?: {
+                  gate_type?: string;
+                  title?: string;
+                  description?: string;
+                  payload?: Record<string, unknown>;
+                };
+              };
+              const req = outer.__agist_approval;
+              if (req?.gate_type && req?.title) {
+                const gateId = nanoid();
+                run(
+                  `INSERT INTO approval_gates (id, company_id, agent_id, gate_type, title, description, payload, status, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now'))`,
+                  [gateId, companyId, agentId, req.gate_type, req.title, req.description ?? '', JSON.stringify(req.payload ?? {})]
+                );
+                logger.info('Agent requested approval gate', { agentId, runId, gateType: req.gate_type, title: req.title });
+              }
+            }
+          } catch (approvalParseErr) {
+            logger.warn('Failed to parse __agist_approval', { agentId, runId, error: String(approvalParseErr) });
+          }
+        }
 
         // Parse __agist_signal markers from plain text output
         if (line.includes('__agist_signal')) {
@@ -789,6 +930,15 @@ export async function spawnClaudeLocal(
       addTokens(inputTokens, outputTokens);
       decRunsActive();
       logger.info('Run completed', { runId, agentId, status, exitCode, costCents, inputTokens, outputTokens });
+
+      // Audit: run completed or failed
+      audit(companyId, agentId, status === 'completed' ? 'run.completed' : 'run.failed', {
+        runId,
+        exitCode,
+        costCents,
+        tokenInput: inputTokens,
+        tokenOutput: outputTokens,
+      });
 
       pushToAgent(agentId, { type: 'status', agentId, status: agentStatus, runId });
 

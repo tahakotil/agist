@@ -2,7 +2,7 @@
 
 import { use, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { getAgent, getAgentRuns, getAgentLatestOutput, wakeAgent, updateAgent, getAgentContext, updateAgentContext, type Agent, type Run, type RunOutput } from "@/lib/api"
+import { getAgent, getAgentRuns, getAgentLatestOutput, wakeAgent, getAgentContext, updateAgentContext, pauseAgent, resumeAgent, type Agent, type Run, type RunOutput } from "@/lib/api"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button, buttonVariants } from "@/components/ui/button"
@@ -23,6 +23,8 @@ import {
   Clock,
   Play,
   Pause,
+  PlayCircle,
+  DollarSign,
   Building2,
   CheckCircle,
   XCircle,
@@ -63,6 +65,7 @@ const STATUS_BADGE: Record<string, string> = {
   running: "bg-blue-500/15 text-blue-400 border-blue-500/30",
   error: "bg-red-500/15 text-red-400 border-red-500/30",
   paused: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+  budget_exceeded: "bg-red-500/15 text-red-400 border-red-500/30",
 }
 
 const RUN_STATUS_BADGE: Record<string, string> = {
@@ -253,11 +256,21 @@ export default function AgentDetailPage({ params }: PageProps) {
 
   async function handlePause() {
     try {
-      await updateAgent(id, { status: "paused" })
+      await pauseAgent(id)
       toast.success("Agent paused")
       queryClient.invalidateQueries({ queryKey: ["agents", id] })
     } catch {
       toast.error("Failed to pause agent")
+    }
+  }
+
+  async function handleResume() {
+    try {
+      await resumeAgent(id)
+      toast.success("Agent resumed")
+      queryClient.invalidateQueries({ queryKey: ["agents", id] })
+    } catch {
+      toast.error("Failed to resume agent")
     }
   }
 
@@ -359,11 +372,22 @@ export default function AgentDetailPage({ params }: PageProps) {
             variant="outline"
             className="border-slate-700 bg-slate-800 text-slate-300 hover:bg-amber-500/10 hover:text-amber-400 hover:border-amber-500/40"
             onClick={handlePause}
-            disabled={agent.status === "paused"}
+            disabled={agent.status === "paused" || agent.status === "budget_exceeded"}
           >
             <Pause className="h-3.5 w-3.5 mr-1.5" />
             Pause
           </Button>
+          {(agent.status === "paused" || agent.status === "budget_exceeded") && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-slate-700 bg-slate-800 text-slate-300 hover:bg-emerald-500/10 hover:text-emerald-400 hover:border-emerald-500/40"
+              onClick={handleResume}
+            >
+              <PlayCircle className="h-3.5 w-3.5 mr-1.5" />
+              Resume
+            </Button>
+          )}
         </div>
       </div>
 
@@ -429,6 +453,44 @@ export default function AgentDetailPage({ params }: PageProps) {
           </CardContent>
         </Card>
       </div>
+
+      {agent.budgetMonthlyCents > 0 && (
+        <Card className={cn(
+          "border",
+          agent.status === "budget_exceeded"
+            ? "bg-red-950/20 border-red-500/30"
+            : "bg-slate-900 border-slate-800"
+        )}>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs text-slate-500 flex items-center gap-1.5">
+                <DollarSign className="h-3.5 w-3.5" />
+                Monthly Budget
+              </p>
+              <span className={cn(
+                "text-xs font-mono",
+                agent.status === "budget_exceeded" ? "text-red-400" : "text-slate-400"
+              )}>
+                {formatCost(agent.spentMonthlyCents)} / {formatCost(agent.budgetMonthlyCents)}
+              </span>
+            </div>
+            <div className="w-full bg-slate-800 rounded-full h-2">
+              <div
+                className={cn(
+                  "h-2 rounded-full transition-all",
+                  agent.status === "budget_exceeded" ? "bg-red-500" : "bg-emerald-500"
+                )}
+                style={{
+                  width: `${Math.min(100, (agent.spentMonthlyCents / agent.budgetMonthlyCents) * 100).toFixed(1)}%`
+                }}
+              />
+            </div>
+            {agent.status === "budget_exceeded" && (
+              <p className="text-xs text-red-400 mt-2">Budget exceeded — agent is paused. Resume to reset.</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {agent.workingDirectory ? (
         <Card className="bg-slate-900 border-slate-800">

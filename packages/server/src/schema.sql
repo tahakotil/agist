@@ -168,3 +168,34 @@ CREATE TABLE IF NOT EXISTS signals (
 CREATE INDEX IF NOT EXISTS idx_signals_company ON signals(company_id);
 CREATE INDEX IF NOT EXISTS idx_signals_type ON signals(signal_type);
 CREATE INDEX IF NOT EXISTS idx_signals_created_at ON signals(created_at);
+
+CREATE TABLE IF NOT EXISTS approval_gates (
+  id           TEXT PRIMARY KEY,
+  company_id   TEXT NOT NULL,
+  agent_id     TEXT NOT NULL,
+  gate_type    TEXT NOT NULL,
+  title        TEXT NOT NULL,
+  description  TEXT NOT NULL DEFAULT '',
+  payload      TEXT NOT NULL DEFAULT '{}',
+  status       TEXT NOT NULL DEFAULT 'pending',
+  decided_at   TEXT,
+  decided_by   TEXT DEFAULT 'human',
+  created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_gates_company ON approval_gates(company_id);
+CREATE INDEX IF NOT EXISTS idx_gates_agent ON approval_gates(agent_id);
+CREATE INDEX IF NOT EXISTS idx_gates_status ON approval_gates(status);
+
+CREATE TABLE IF NOT EXISTS audit_log (
+  id         TEXT PRIMARY KEY,
+  company_id TEXT,
+  agent_id   TEXT,
+  action     TEXT NOT NULL,
+  detail     TEXT NOT NULL DEFAULT '{}',
+  actor      TEXT NOT NULL DEFAULT 'system',
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_company ON audit_log(company_id);
+CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at DESC);

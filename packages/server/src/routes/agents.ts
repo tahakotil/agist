@@ -4,11 +4,12 @@ import { z } from 'zod';
 import { isAbsolute } from 'path';
 import { nanoid } from 'nanoid';
 import { all, get, run } from '../db.js';
-import { spawnClaudeLocal } from '../adapter.js';
+import { spawnClaudeLocal, checkAgentBudget } from '../adapter.js';
 import { broadcast } from '../sse.js';
 import { getPaginationParams, paginatedResponse } from '../utils/pagination.js';
 import { requireRole } from '../middleware/rbac.js';
 import { slugify } from '../workspace.js';
+import { audit } from '../audit.js';
 
 export const agentsRouter = new Hono();
 
@@ -26,7 +27,7 @@ const createSchema = z.object({
   tags: z.array(z.string()).default([]),
   budgetMonthlyCents: z.number().int().min(0).default(0),
   status: z
-    .enum(['idle', 'running', 'paused', 'error'])
+    .enum(['idle', 'running', 'paused', 'error', 'budget_exceeded'])
     .default('idle'),
 });
 
@@ -582,6 +583,12 @@ agentsRouter.post('/api/agents/:id/wake', requireRole('admin'), async (c) => {
     return c.json({ error: 'Agent is already running' }, 409);
   }
 
+  // Budget check: reject if agent has exceeded monthly budget
+  const budgetError = checkAgentBudget(id);
+  if (budgetError) {
+    return c.json({ error: budgetError, code: 'budget_exceeded' }, 402);
+  }
+
   // Rate limit: prevent re-waking within 10 seconds
   const now_ms = Date.now();
 
@@ -636,6 +643,8 @@ agentsRouter.post('/api/agents/:id/wake', requireRole('admin'), async (c) => {
     [runId, agent.id, agent.company_id, agent.model, source, bodyChainDepth, now]
   );
 
+  audit(agent.company_id, agent.id, 'agent.wake', { runId, source, prompt: bodyPrompt ?? null });
+
   const adapterConfig = (() => {
     try {
       return JSON.parse(agent.adapter_config) as Record<string, unknown>;
@@ -666,6 +675,54 @@ agentsRouter.post('/api/agents/:id/wake', requireRole('admin'), async (c) => {
   });
 
   return c.json({ run: { id: runId, agentId: id, status: 'queued', chainDepth: bodyChainDepth } }, 202);
+});
+
+// POST /api/agents/:id/pause — pause agent (stops scheduler from picking it up)
+agentsRouter.post('/api/agents/:id/pause', requireRole('admin'), (c) => {
+  const id = c.req.param('id');
+
+  const existing = get<AgentRow>(`SELECT * FROM agents WHERE id = ?`, [id]);
+  if (!existing) {
+    return c.json({ error: 'Agent not found' }, 404);
+  }
+
+  if (existing.status === 'paused') {
+    return c.json({ error: 'Agent is already paused' }, 409);
+  }
+
+  const now = new Date().toISOString();
+  run(`UPDATE agents SET status = 'paused', updated_at = ? WHERE id = ?`, [now, id]);
+
+  audit(existing.company_id, id ?? null, 'agent.paused', { previousStatus: existing.status });
+
+  broadcast({ type: 'agent.status', data: { agentId: id, status: 'paused' } });
+
+  const updated = get<AgentRow>(`SELECT * FROM agents WHERE id = ?`, [id]);
+  return c.json({ agent: rowToAgent(updated!) });
+});
+
+// POST /api/agents/:id/resume — resume paused/budget_exceeded agent
+agentsRouter.post('/api/agents/:id/resume', requireRole('admin'), (c) => {
+  const id = c.req.param('id');
+
+  const existing = get<AgentRow>(`SELECT * FROM agents WHERE id = ?`, [id]);
+  if (!existing) {
+    return c.json({ error: 'Agent not found' }, 404);
+  }
+
+  if (existing.status !== 'paused' && existing.status !== 'budget_exceeded') {
+    return c.json({ error: 'Agent is not paused or budget_exceeded' }, 409);
+  }
+
+  const now = new Date().toISOString();
+  run(`UPDATE agents SET status = 'idle', updated_at = ? WHERE id = ?`, [now, id]);
+
+  audit(existing.company_id, id ?? null, 'agent.resumed', { previousStatus: existing.status });
+
+  broadcast({ type: 'agent.status', data: { agentId: id, status: 'idle' } });
+
+  const updated = get<AgentRow>(`SELECT * FROM agents WHERE id = ?`, [id]);
+  return c.json({ agent: rowToAgent(updated!) });
 });
 
 // GET /api/agents/:id/context — get context capsule

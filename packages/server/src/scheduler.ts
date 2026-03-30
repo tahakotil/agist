@@ -1,7 +1,7 @@
 import { CronExpressionParser } from 'cron-parser';
 import { nanoid } from 'nanoid';
 import { all, get, run } from './db.js';
-import { spawnClaudeLocal } from './adapter.js';
+import { spawnClaudeLocal, checkAgentBudget } from './adapter.js';
 import { logger } from './logger.js';
 
 interface RoutineRow {
@@ -66,8 +66,19 @@ async function processDueRoutines(): Promise<void> {
 
     if (!agent) continue;
 
-    // Don't pile on if agent is already running
-    if (agent.status === 'running') continue;
+    // Don't pile on if agent is already running, paused, or over budget
+    if (agent.status === 'running' || agent.status === 'paused' || agent.status === 'budget_exceeded') continue;
+
+    // Check budget before spawning
+    const budgetError = checkAgentBudget(routine.agent_id);
+    if (budgetError) {
+      logger.warn('Scheduler: skipping routine — agent over budget', {
+        routineId: routine.id,
+        agentId: routine.agent_id,
+        error: budgetError,
+      });
+      continue;
+    }
 
     const runId = nanoid();
     const createdAt = new Date().toISOString();
