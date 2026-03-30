@@ -1,5 +1,8 @@
 import { Hono } from 'hono';
-import { all, get } from '../db.js';
+import { zValidator } from '@hono/zod-validator';
+import { z } from 'zod';
+import { nanoid } from 'nanoid';
+import { all, get, run } from '../db.js';
 
 export const outputsRouter = new Hono();
 
@@ -28,6 +31,38 @@ function rowToOutput(row: RunOutputRow) {
     createdAt: row.created_at,
   };
 }
+
+const createOutputSchema = z.object({
+  output_type: z.string().min(1).max(100).default('report'),
+  data: z.record(z.unknown()),
+});
+
+// POST /api/runs/:runId/outputs — store a parsed output for a run
+outputsRouter.post(
+  '/api/runs/:runId/outputs',
+  zValidator('json', createOutputSchema),
+  (c) => {
+    const runId = c.req.param('runId');
+    const body = c.req.valid('json');
+
+    const runRow = get<{ id: string; agent_id: string }>(`SELECT id, agent_id FROM runs WHERE id = ?`, [runId]);
+    if (!runRow) {
+      return c.json({ error: 'Run not found' }, 404);
+    }
+
+    const id = nanoid();
+    const now = new Date().toISOString();
+    const dataStr = JSON.stringify(body.data);
+
+    run(
+      `INSERT INTO run_outputs (id, run_id, agent_id, output_type, data, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+      [id, runId, runRow.agent_id, body.output_type, dataStr, now]
+    );
+
+    const row = get<RunOutputRow>(`SELECT * FROM run_outputs WHERE id = ?`, [id]);
+    return c.json({ output: rowToOutput(row!) }, 201);
+  }
+);
 
 // GET /api/runs/:runId/outputs — outputs for a specific run
 outputsRouter.get('/api/runs/:runId/outputs', (c) => {

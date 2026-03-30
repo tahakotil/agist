@@ -13,6 +13,7 @@ import { dispatchWebhooks } from './webhooks.js';
 import { sendSlackNotification } from './integrations/slack.js';
 import { createGitHubIssue } from './integrations/github.js';
 import { getAdapter, getDefaultAdapter } from './adapters/index.js';
+import { estimateCostCents } from './adapters/cost.js';
 import { parseAgentOutputs } from './output-parser.js';
 import { ensureWorkspace, slugify } from './workspace.js';
 
@@ -334,55 +335,6 @@ ${ctx.routineTitle ? `## Current Routine: ${ctx.routineTitle}\n${ctx.routineDesc
 
   writeFileSync(join(skillDir, 'SKILL.md'), skillContent, 'utf-8');
   return base;
-}
-
-interface StreamJsonChunk {
-  type?: string;
-  usage?: {
-    input_tokens?: number;
-    output_tokens?: number;
-  };
-  message?: {
-    usage?: {
-      input_tokens?: number;
-      output_tokens?: number;
-    };
-  };
-  delta?: {
-    type?: string;
-    text?: string;
-  };
-  content_block?: {
-    type?: string;
-    text?: string;
-  };
-}
-
-function estimateCostCents(
-  model: string,
-  inputTokens: number,
-  outputTokens: number
-): number {
-  // Cost rates per 1M tokens in cents ($0.80 input = 80 cents per 1M)
-  const pricing: Record<string, { input: number; output: number }> = {
-    'claude-opus-4-5': { input: 1500, output: 7500 },
-    'claude-sonnet-4-5': { input: 300, output: 1500 },
-    'claude-haiku-4-5': { input: 80, output: 400 },
-    'claude-opus-4': { input: 1500, output: 7500 },
-    'claude-sonnet-4': { input: 300, output: 1500 },
-    'claude-haiku-4': { input: 80, output: 400 },
-    'haiku': { input: 80, output: 400 },
-    'sonnet': { input: 300, output: 1500 },
-    'opus': { input: 1500, output: 7500 },
-  };
-
-  const modelKey = Object.keys(pricing).find((k) => model.includes(k)) ?? '';
-  const rates = pricing[modelKey] ?? { input: 300, output: 1500 };
-
-  return Math.round(
-    (inputTokens / 1_000_000) * rates.input +
-      (outputTokens / 1_000_000) * rates.output
-  );
 }
 
 /**

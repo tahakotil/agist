@@ -8,6 +8,8 @@ export interface AdapterRunOptions {
   systemPrompt?: string
   capabilities?: string[]
   title?: string
+  /** Extra directories to mount via --add-dir (claude-cli only) */
+  extraDirs?: string[]
   onLog: (line: string) => void
   onTokens: (input: number, output: number) => void
 }
