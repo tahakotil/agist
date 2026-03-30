@@ -119,6 +119,11 @@ export async function initDb(): Promise<Database> {
   } catch {
     // Column already exists — ignore
   }
+  try {
+    db.run("CREATE INDEX IF NOT EXISTS idx_agents_slug ON agents(slug)");
+  } catch {
+    // Index already exists — ignore
+  }
   // Back-fill slugs for existing rows that don't have one yet
   try {
     const rows = db.exec("SELECT id, name FROM agents WHERE slug IS NULL OR slug = ''");

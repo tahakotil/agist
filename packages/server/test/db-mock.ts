@@ -38,6 +38,7 @@ export async function createTestDb(): Promise<Database> {
     "ALTER TABLE agents ADD COLUMN project_id TEXT",
     "ALTER TABLE agents ADD COLUMN tags TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE routines ADD COLUMN project_id TEXT",
+    "ALTER TABLE agents ADD COLUMN context_capsule TEXT NOT NULL DEFAULT ''",
   ]
   for (const sql of migrations) {
     try { db.run(sql) } catch { /* column already exists */ }

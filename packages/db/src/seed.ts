@@ -465,6 +465,63 @@ const sampleIssues = [
 
 console.log(`Created ${sampleIssues.length} issues.`);
 
+// ─── Context Capsules ─────────────────────────────────────────────────────────
+
+const capsules: Array<{ id: string; capsule: string }> = [
+  {
+    id: pcCeo.id,
+    capsule: `IDENTITY: Atlas — Chief Executive Agent for Paperclip AI
+ROLE: Strategic decision-making, OKR management, cross-team alignment
+CURRENT_QUARTER: Q1 2025 — target 2x ARR growth, ship mobile app v2
+KEY_PRIORITIES:
+- Close Series A ($4M target) by end of Q2
+- Launch enterprise tier with SSO/SCIM by March 31
+- Grow MRR from $42k → $85k by June 30
+TEAM_STATUS: 5 agents active; Quill (content) underperforming on output volume
+CONTEXT: Product-market fit confirmed in knowledge worker segment. Churn < 3%.`,
+  },
+  {
+    id: pcEngineer.id,
+    capsule: `IDENTITY: Forge — Lead Software Engineer for Paperclip AI
+STACK: TypeScript (Next.js 16 + Hono), PostgreSQL, Docker, Vercel
+CURRENT_SPRINT: Sprint 14 — context capsule system + agent chaining
+ACTIVE_BRANCHES: feat/context-capsule, feat/agent-chain-v2
+KNOWN_ISSUES:
+- N+1 query on /api/companies/:id/agents — needs dataloader
+- WebSocket reconnect drops first 2 log lines on mobile Safari
+LAST_MERGED: feat/run-outputs schema (2025-03-28)
+CONVENTIONS: Conventional commits, all endpoints require Zod validators`,
+  },
+  {
+    id: nxSeo.id,
+    capsule: `IDENTITY: Beacon — SEO Specialist for Nexus Commerce
+CURRENT_FOCUS: Technical SEO audit + schema markup rollout
+TOP_KEYWORDS_TRACKED: "e-commerce automation" (pos 14), "shopify growth tools" (pos 8)
+RECENT_WINS: Core Web Vitals LCP improved from 3.2s → 1.8s after image CDN migration
+PENDING_TASKS:
+- Add Product + BreadcrumbList JSON-LD to 340 product pages
+- Fix 127 broken internal links found in Screaming Frog crawl
+- Submit updated sitemap (12,483 URLs) to GSC`,
+  },
+  {
+    id: vaEngineer.id,
+    capsule: `IDENTITY: Datum — Data Engineer for Vantage Analytics
+STACK: Python, dbt (v1.7), Airflow 2.8, BigQuery (migration in progress)
+MIGRATION_STATUS: 60% tables migrated from Redshift to BigQuery; completion ETA April 15
+CURRENT_DAGS: 14 active (2 paused for migration), 0 SLA breaches last 30 days
+SCHEMA_CHANGES_PENDING:
+- events table: add session_id column (blocked on Redshift→BQ cutover)
+- metrics_daily: add p95_latency field (PR open, needs review)
+DATA_QUALITY: 3 anomaly alerts last week — all resolved (upstream API rate limits)`,
+  },
+];
+
+const ts = new Date().toISOString();
+for (const { id: agentId, capsule } of capsules) {
+  db.run(`UPDATE agents SET context_capsule = ?, updated_at = ? WHERE id = ?`, [capsule, ts, agentId]);
+}
+console.log(`Seeded ${capsules.length} context capsules.`);
+
 console.log("\nSeed complete.");
 console.log("Summary:");
 console.log(`  Companies : 4`);
