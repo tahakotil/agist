@@ -6,7 +6,7 @@ import { nanoid } from 'nanoid';
 vi.mock('../src/db.js', () => createDbMock());
 vi.mock('../src/sse.js', () => ({ broadcast: () => {}, subscribe: () => () => {} }));
 vi.mock('../src/ws.js', () => ({ pushToAgent: () => {}, initWebSocketServer: () => {}, handleUpgrade: () => {} }));
-vi.mock('../src/adapter.js', () => ({ spawnClaudeLocal: async () => {} }));
+vi.mock('../src/adapter.js', () => ({ spawnClaudeLocal: async () => {}, checkAgentBudget: () => null }));
 
 async function buildApp() {
   const { companiesRouter } = await import('../src/routes/companies.js');

@@ -12,6 +12,7 @@ vi.mock('../src/ws.js', () => ({
 // Mock adapter so /wake doesn't try to spawn a real process
 vi.mock('../src/adapter.js', () => ({
   spawnClaudeLocal: vi.fn(async () => {}),
+  checkAgentBudget: vi.fn(() => null),
 }));
 
 async function buildApp() {
