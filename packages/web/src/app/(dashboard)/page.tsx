@@ -15,7 +15,7 @@ import {
   type Run,
   type DashboardStats,
   type AgentDailyCost,
-  type DigestRow,
+  type DailyDigest,
 } from "@/lib/api"
 import { StatCard } from "@/components/stat-card"
 import { AgentCard } from "@/components/agent-card"
@@ -73,7 +73,7 @@ export default function DashboardPage() {
   })
   const firstCompanyId = companiesData?.companies?.[0]?.id
 
-  const { data: todayDigest } = useQuery<DigestRow | null>({
+  const { data: todayDigest } = useQuery<DailyDigest | null>({
     queryKey: ["digest", firstCompanyId, "today"],
     queryFn: () => getCompanyDigest(firstCompanyId!),
     enabled: !!firstCompanyId,
@@ -176,30 +176,30 @@ export default function DashboardPage() {
             {todayDigest ? (
               <div className="flex flex-wrap gap-6">
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-2xl font-bold text-slate-100">{todayDigest.digest.totalRuns}</span>
+                  <span className="text-2xl font-bold text-slate-100">{todayDigest.summary.totalRuns}</span>
                   <span className="text-xs text-slate-500">Total runs</span>
                 </div>
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-2xl font-bold text-emerald-400">{todayDigest.digest.successfulRuns}</span>
+                  <span className="text-2xl font-bold text-emerald-400">{todayDigest.summary.successful}</span>
                   <span className="text-xs text-slate-500">Successful</span>
                 </div>
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-2xl font-bold text-red-400">{todayDigest.digest.failedRuns}</span>
+                  <span className="text-2xl font-bold text-red-400">{todayDigest.summary.failed}</span>
                   <span className="text-xs text-slate-500">Failed</span>
                 </div>
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-2xl font-bold text-amber-400">{formatCost(todayDigest.digest.totalCostCents / 100)}</span>
+                  <span className="text-2xl font-bold text-amber-400">{formatCost(todayDigest.summary.totalCostUsd)}</span>
                   <span className="text-xs text-slate-500">Spent today</span>
                 </div>
-                {todayDigest.digest.pendingApprovals > 0 && (
+                {todayDigest.pendingApprovals > 0 && (
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-2xl font-bold text-orange-400">{todayDigest.digest.pendingApprovals}</span>
+                    <span className="text-2xl font-bold text-orange-400">{todayDigest.pendingApprovals}</span>
                     <span className="text-xs text-slate-500">Pending approvals</span>
                   </div>
                 )}
-                {todayDigest.digest.actionItems.length > 0 && (
+                {todayDigest.actionItems.length > 0 && (
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-2xl font-bold text-blue-400">{todayDigest.digest.actionItems.length}</span>
+                    <span className="text-2xl font-bold text-blue-400">{todayDigest.actionItems.length}</span>
                     <span className="text-xs text-slate-500">Action items</span>
                   </div>
                 )}

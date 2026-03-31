@@ -8,7 +8,7 @@ import {
   getCompanyDigestByDate,
   generateCompanyDigest,
   type Company,
-  type DigestRow,
+  type DailyDigest,
   type ActionItem,
   type AgentDigestEntry,
 } from "@/lib/api"
@@ -28,7 +28,6 @@ import {
   BookOpen,
   Bot,
   CheckCircle,
-  XCircle,
   DollarSign,
   AlertTriangle,
   ChevronDown,
@@ -50,8 +49,6 @@ const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 }
 
 function AgentCard({ entry }: { entry: AgentDigestEntry }) {
   const [expanded, setExpanded] = useState(false)
-  const successRate =
-    entry.totalRuns > 0 ? ((entry.successfulRuns / entry.totalRuns) * 100).toFixed(0) : null
 
   return (
     <div className="rounded-lg border border-slate-800 bg-slate-900/60 overflow-hidden">
@@ -66,34 +63,14 @@ function AgentCard({ entry }: { entry: AgentDigestEntry }) {
           <div className="min-w-0">
             <p className="text-sm font-medium text-slate-200 truncate">{entry.agentName}</p>
             <p className="text-xs text-slate-500">
-              {entry.totalRuns} runs &middot; {formatCost(entry.totalCostCents / 100)}
+              {entry.runs} runs &middot; {formatCost(entry.costUsd)}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-3 shrink-0">
-          {successRate !== null && (
-            <span
-              className={cn(
-                "text-xs font-mono font-semibold",
-                parseInt(successRate) >= 80
-                  ? "text-emerald-400"
-                  : parseInt(successRate) >= 50
-                  ? "text-amber-400"
-                  : "text-red-400"
-              )}
-            >
-              {successRate}%
-            </span>
-          )}
           <div className="flex items-center gap-1">
             <CheckCircle className="h-3.5 w-3.5 text-emerald-400" />
-            <span className="text-xs text-emerald-400">{entry.successfulRuns}</span>
-            {entry.failedRuns > 0 && (
-              <>
-                <XCircle className="h-3.5 w-3.5 text-red-400 ml-1" />
-                <span className="text-xs text-red-400">{entry.failedRuns}</span>
-              </>
-            )}
+            <span className="text-xs text-emerald-400">{entry.runs}</span>
           </div>
           {expanded ? (
             <ChevronUp className="h-3.5 w-3.5 text-slate-500" />
@@ -135,12 +112,6 @@ function AgentCard({ entry }: { entry: AgentDigestEntry }) {
               </ul>
             </div>
           )}
-          {entry.avgDurationMs > 0 && (
-            <p className="text-xs text-slate-500 flex items-center gap-1.5">
-              <Clock className="h-3 w-3" />
-              Avg duration: {(entry.avgDurationMs / 1000).toFixed(1)}s
-            </p>
-          )}
         </div>
       )}
     </div>
@@ -164,8 +135,8 @@ function ActionItemsList({ items }: { items: ActionItem[] }) {
             {item.priority}
           </Badge>
           <span className="text-sm text-slate-300">{item.description}</span>
-          {item.agentName && (
-            <span className="text-xs text-slate-500 shrink-0 ml-auto">{item.agentName}</span>
+          {item.source && (
+            <span className="text-xs text-slate-500 shrink-0 ml-auto">{item.source}</span>
           )}
         </li>
       ))}
@@ -193,7 +164,7 @@ export default function DigestPage() {
     ? ["digest", activeCompanyId, queryDate]
     : ["digest", activeCompanyId, "today"]
 
-  const { data: digestData, isLoading: digestLoading } = useQuery<DigestRow | null>({
+  const { data: digest, isLoading: digestLoading } = useQuery<DailyDigest | null>({
     queryKey,
     queryFn: () =>
       queryDate
@@ -217,8 +188,6 @@ export default function DigestPage() {
       setGenerating(false)
     }
   }
-
-  const digest = digestData?.digest ?? null
 
   return (
     <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
@@ -307,7 +276,7 @@ export default function DigestPage() {
             <span>
               Digest for <span className="text-slate-300 font-medium">{digest.date}</span>
               {" · "}generated{" "}
-              {new Date(digest.generatedAt).toLocaleTimeString(undefined, {
+              {new Date(digest.createdAt).toLocaleTimeString(undefined, {
                 hour: "2-digit",
                 minute: "2-digit",
               })}
@@ -319,26 +288,26 @@ export default function DigestPage() {
             <Card className="bg-slate-900 border-slate-800">
               <CardContent className="pt-4 pb-4">
                 <p className="text-xs text-slate-500 mb-1">Total Runs</p>
-                <p className="text-3xl font-bold text-slate-100">{digest.totalRuns}</p>
+                <p className="text-3xl font-bold text-slate-100">{digest.summary.totalRuns}</p>
               </CardContent>
             </Card>
             <Card className="bg-slate-900 border-slate-800">
               <CardContent className="pt-4 pb-4">
                 <p className="text-xs text-slate-500 mb-1">Successful</p>
-                <p className="text-3xl font-bold text-emerald-400">{digest.successfulRuns}</p>
+                <p className="text-3xl font-bold text-emerald-400">{digest.summary.successful}</p>
               </CardContent>
             </Card>
             <Card className="bg-slate-900 border-slate-800">
               <CardContent className="pt-4 pb-4">
                 <p className="text-xs text-slate-500 mb-1">Failed</p>
-                <p className="text-3xl font-bold text-red-400">{digest.failedRuns}</p>
+                <p className="text-3xl font-bold text-red-400">{digest.summary.failed}</p>
               </CardContent>
             </Card>
             <Card className="bg-slate-900 border-slate-800">
               <CardContent className="pt-4 pb-4">
                 <p className="text-xs text-slate-500 mb-1">Total Cost</p>
                 <p className="text-3xl font-bold text-amber-400">
-                  {formatCost(digest.totalCostCents / 100)}
+                  {formatCost(digest.summary.totalCostUsd)}
                 </p>
               </CardContent>
             </Card>
@@ -358,7 +327,7 @@ export default function DigestPage() {
           </div>
 
           {/* Budget status */}
-          {digest.budgetStatus && digest.budgetStatus.budgetMonthlyCents > 0 && (
+          {digest.budgetStatus && digest.budgetStatus.limitMonth > 0 && (
             <Card className="bg-slate-900 border-slate-800">
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-semibold text-slate-100 flex items-center gap-2">
@@ -369,51 +338,31 @@ export default function DigestPage() {
               <CardContent className="space-y-3">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-slate-400">
-                    {formatCost(digest.budgetStatus.spentMonthlyCents / 100)} spent of{" "}
-                    {formatCost(digest.budgetStatus.budgetMonthlyCents / 100)} monthly budget
+                    {formatCost(digest.budgetStatus.spentMonth)} spent of{" "}
+                    {formatCost(digest.budgetStatus.limitMonth)} monthly budget
                   </span>
                   <Badge
                     className={cn(
                       "border text-xs",
-                      digest.budgetStatus.onTrack
+                      digest.budgetStatus.burnRate !== "over pace"
                         ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
                         : "bg-red-500/15 text-red-400 border-red-500/30"
                     )}
                   >
-                    {digest.budgetStatus.onTrack ? "On track" : "Over pace"}
+                    {digest.budgetStatus.burnRate}
                   </Badge>
                 </div>
                 <div className="relative h-2 rounded-full bg-slate-800 overflow-hidden">
                   <div
                     className={cn(
                       "h-full rounded-full transition-all",
-                      digest.budgetStatus.onTrack ? "bg-emerald-500" : "bg-red-500"
+                      digest.budgetStatus.burnRate !== "over pace" ? "bg-emerald-500" : "bg-red-500"
                     )}
                     style={{
-                      width: `${Math.min(100, (digest.budgetStatus.spentMonthlyCents / digest.budgetStatus.budgetMonthlyCents) * 100).toFixed(1)}%`,
+                      width: `${Math.min(100, (digest.budgetStatus.spentMonth / digest.budgetStatus.limitMonth) * 100).toFixed(1)}%`,
                     }}
                   />
                 </div>
-                <p className="text-xs text-slate-500">
-                  {digest.budgetStatus.burnRatePct.toFixed(1)}% burn rate vs expected monthly pace
-                </p>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* LLM summary */}
-          {digest.llmSummary && (
-            <Card className="bg-violet-500/5 border-violet-500/20">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold text-violet-300 flex items-center gap-2">
-                  <Sparkles className="h-4 w-4" />
-                  AI Summary
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-line">
-                  {digest.llmSummary}
-                </p>
               </CardContent>
             </Card>
           )}
@@ -434,16 +383,16 @@ export default function DigestPage() {
           )}
 
           {/* Per-agent breakdown */}
-          {digest.agentEntries.length > 0 && (
+          {digest.byAgent.length > 0 && (
             <div>
               <div className="flex items-center gap-2 mb-3">
                 <TrendingUp className="h-4 w-4 text-slate-500" />
                 <h2 className="text-sm font-semibold text-slate-300">
-                  Agent Breakdown ({digest.agentEntries.length})
+                  Agent Breakdown ({digest.byAgent.length})
                 </h2>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                {digest.agentEntries.map((entry) => (
+                {digest.byAgent.map((entry) => (
                   <AgentCard key={entry.agentId} entry={entry} />
                 ))}
               </div>

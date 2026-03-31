@@ -838,64 +838,55 @@ export async function resumeAgent(agentId: string): Promise<{ agent: Agent }> {
 export interface AgentDigestEntry {
   agentId: string;
   agentName: string;
-  totalRuns: number;
-  successfulRuns: number;
-  failedRuns: number;
-  totalCostCents: number;
-  avgDurationMs: number;
+  runs: number;
+  costUsd: number;
   highlights: string[];
   issues: string[];
 }
 
 export interface ActionItem {
-  priority: 'high' | 'medium' | 'low';
   description: string;
-  agentId?: string;
-  agentName?: string;
+  priority: 'high' | 'medium' | 'low';
+  source: string;
 }
 
 export interface BudgetStatus {
-  budgetMonthlyCents: number;
-  spentMonthlyCents: number;
-  burnRatePct: number;
-  onTrack: boolean;
+  spentToday: number;
+  spentMonth: number;
+  limitMonth: number;
+  burnRate: 'on track' | 'over pace' | 'under budget';
 }
 
 export interface DailyDigest {
-  companyId: string;
-  date: string;
-  totalRuns: number;
-  successfulRuns: number;
-  failedRuns: number;
-  totalCostCents: number;
-  pendingApprovals: number;
-  agentEntries: AgentDigestEntry[];
-  actionItems: ActionItem[];
-  budgetStatus: BudgetStatus | null;
-  generatedAt: string;
-  llmSummary: string | null;
-}
-
-export interface DigestRow {
   id: string;
-  companyId: string;
   date: string;
-  digest: DailyDigest;
+  companyId: string;
+  summary: {
+    totalRuns: number;
+    successful: number;
+    failed: number;
+    totalCostUsd: number;
+    totalTokens: { input: number; output: number };
+  };
+  byAgent: AgentDigestEntry[];
+  actionItems: ActionItem[];
+  budgetStatus: BudgetStatus;
+  pendingApprovals: number;
   createdAt: string;
 }
 
-export async function getCompanyDigest(companyId: string): Promise<DigestRow | null> {
+export async function getCompanyDigest(companyId: string): Promise<DailyDigest | null> {
   try {
-    const res = await api<{ digest: DigestRow | null }>(`/companies/${companyId}/digest`);
+    const res = await api<{ digest: DailyDigest | null }>(`/companies/${companyId}/digest`);
     return res.digest;
   } catch {
     return null;
   }
 }
 
-export async function getCompanyDigestByDate(companyId: string, date: string): Promise<DigestRow | null> {
+export async function getCompanyDigestByDate(companyId: string, date: string): Promise<DailyDigest | null> {
   try {
-    const res = await api<{ digest: DigestRow | null }>(`/companies/${companyId}/digest/${date}`);
+    const res = await api<{ digest: DailyDigest | null }>(`/companies/${companyId}/digest/${date}`);
     return res.digest;
   } catch {
     return null;
@@ -906,9 +897,9 @@ export async function getCompanyDigestRange(
   companyId: string,
   from: string,
   to: string
-): Promise<DigestRow[]> {
+): Promise<DailyDigest[]> {
   try {
-    const res = await api<{ digests: DigestRow[] }>(
+    const res = await api<{ digests: DailyDigest[] }>(
       `/companies/${companyId}/digest/range${buildQs({ from, to })}`
     );
     return res.digests;
@@ -917,8 +908,8 @@ export async function getCompanyDigestRange(
   }
 }
 
-export async function generateCompanyDigest(companyId: string, date?: string): Promise<DigestRow> {
-  const res = await api<{ digest: DigestRow }>(`/companies/${companyId}/digest/generate`, {
+export async function generateCompanyDigest(companyId: string, date?: string): Promise<DailyDigest> {
+  const res = await api<{ digest: DailyDigest }>(`/companies/${companyId}/digest/generate`, {
     method: 'POST',
     body: JSON.stringify({ date }),
   });
