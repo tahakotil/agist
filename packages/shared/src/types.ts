@@ -15,6 +15,9 @@ export interface PaginatedResponse<T> {
 
 export type CompanyStatus = "active" | "paused" | "archived";
 export type AgentStatus = "idle" | "running" | "paused" | "error" | "budget_exceeded";
+export type AgentPermissionMode = 'autonomous' | 'supervised' | 'readonly' | 'custom';
+export type CapsulePriority = 'instruction' | 'memory' | 'ephemeral';
+export type RunSource = 'manual' | 'schedule' | 'event' | 'routine' | 'system' | 'chain';
 export type AgentRole =
   | "ceo"
   | "engineer"
@@ -37,6 +40,7 @@ export interface Company {
   status: CompanyStatus;
   budgetMonthlyCents: number;
   spentMonthlyCents: number;
+  systemBudgetCents: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -58,6 +62,8 @@ export interface Agent {
   projectId?: string | null;
   tags?: string[]; // free-form tags for grouping/filtering
   contextCapsule?: string; // persistent agent memory/context
+  permissionMode: AgentPermissionMode;
+  systemPrompt: string; // immutable human-written instructions
   budgetMonthlyCents: number;
   spentMonthlyCents: number;
   createdAt: string;
@@ -160,6 +166,8 @@ export interface ApprovalGate {
   status: ApprovalGateStatus;
   decidedAt: string | null;
   decidedBy: string;
+  autoCreated: boolean;
+  decisionReason: string;
   createdAt: string;
 }
 
@@ -170,5 +178,35 @@ export interface AuditLogEntry {
   action: string;
   detail: Record<string, unknown>;
   actor: string;
+  decisionReason: string;
   createdAt: string;
+}
+
+export interface CapsuleConsolidation {
+  id: string;
+  companyId: string;
+  lastConsolidatedAt: string | null;
+  runsSinceLast: number;
+  lockHolder: string | null;
+  lockAcquiredAt: string | null;
+  status: 'idle' | 'running' | 'failed';
+  createdAt: string;
+}
+
+export interface Capsule {
+  id: string;
+  companyId: string;
+  type: 'static' | 'dynamic' | 'composite';
+  name: string;
+  content: string;
+  tokenCount: number;
+  version: number;
+  config: Record<string, unknown>;
+  active: boolean;
+  priority: CapsulePriority;
+  contentHash: string;
+  lastManualUpdateAt: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }

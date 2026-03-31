@@ -329,6 +329,46 @@ export async function initDb(): Promise<Database> {
     // Table already exists — ignore
   }
 
+  // ── Foundation layer migrations for Claude Code architectural patterns (v2.0) ──
+
+  // agents: permission mode + system prompt
+  try { db.run("ALTER TABLE agents ADD COLUMN permission_mode TEXT NOT NULL DEFAULT 'supervised'"); } catch { /* already exists */ }
+  try { db.run("ALTER TABLE agents ADD COLUMN system_prompt TEXT NOT NULL DEFAULT ''"); } catch { /* already exists */ }
+
+  // companies: system budget
+  try { db.run("ALTER TABLE companies ADD COLUMN system_budget_cents INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
+
+  // capsules: priority, content_hash, last_manual_update_at
+  try { db.run("ALTER TABLE capsules ADD COLUMN priority TEXT NOT NULL DEFAULT 'memory'"); } catch { /* already exists */ }
+  try { db.run("ALTER TABLE capsules ADD COLUMN content_hash TEXT NOT NULL DEFAULT ''"); } catch { /* already exists */ }
+  try { db.run("ALTER TABLE capsules ADD COLUMN last_manual_update_at TEXT"); } catch { /* already exists */ }
+
+  // approval_gates: auto_created, decision_reason
+  try { db.run("ALTER TABLE approval_gates ADD COLUMN auto_created INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
+  try { db.run("ALTER TABLE approval_gates ADD COLUMN decision_reason TEXT NOT NULL DEFAULT ''"); } catch { /* already exists */ }
+
+  // audit_log: decision_reason
+  try { db.run("ALTER TABLE audit_log ADD COLUMN decision_reason TEXT NOT NULL DEFAULT ''"); } catch { /* already exists */ }
+
+  // digests: quality_score, compacted
+  try { db.run("ALTER TABLE digests ADD COLUMN quality_score REAL NOT NULL DEFAULT 0"); } catch { /* already exists */ }
+  try { db.run("ALTER TABLE digests ADD COLUMN compacted INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
+
+  // capsule_consolidation table (v2.0)
+  try {
+    db.run(`CREATE TABLE IF NOT EXISTS capsule_consolidation (
+      id                    TEXT PRIMARY KEY,
+      company_id            TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+      last_consolidated_at  TEXT,
+      runs_since_last       INTEGER NOT NULL DEFAULT 0,
+      lock_holder           TEXT,
+      lock_acquired_at      TEXT,
+      status                TEXT NOT NULL DEFAULT 'idle',
+      created_at            TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_capsule_consolidation_company ON capsule_consolidation(company_id)`);
+  } catch { /* already exists */ }
+
   // ── Enum migration: normalize legacy status values ────────────────────────
   db.run(`UPDATE runs SET status = 'completed' WHERE status IN ('success', 'succeeded')`);
   db.run(`UPDATE companies SET status = 'active' WHERE status IN ('inactive', 'suspended')`);

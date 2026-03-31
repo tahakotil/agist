@@ -24,6 +24,9 @@ export type UpdateCompanyInput = z.infer<typeof UpdateCompanySchema>;
 
 // ─── Agent ───────────────────────────────────────────────────────────────────
 
+export const AgentPermissionModeSchema = z.enum(['autonomous', 'supervised', 'readonly', 'custom']);
+export const CapsulePrioritySchema = z.enum(['instruction', 'memory', 'ephemeral']);
+
 export const AgentRoleSchema = z.enum([
   "ceo",
   "engineer",
@@ -51,6 +54,8 @@ export const CreateAgentSchema = z.object({
   adapterConfig: z.record(z.unknown()).optional().default({}),
   workingDirectory: z.string().max(500).optional(),
   budgetMonthlyCents: z.number().int().nonnegative().optional().default(0),
+  permissionMode: AgentPermissionModeSchema.optional().default('supervised'),
+  systemPrompt: z.string().max(10000).optional().default(''),
 });
 
 export const UpdateAgentSchema = z.object({
@@ -66,6 +71,8 @@ export const UpdateAgentSchema = z.object({
   workingDirectory: z.string().max(500).nullable().optional(),
   budgetMonthlyCents: z.number().int().nonnegative().optional(),
   spentMonthlyCents: z.number().int().nonnegative().optional(),
+  permissionMode: AgentPermissionModeSchema.optional(),
+  systemPrompt: z.string().max(10000).optional(),
 });
 
 export type CreateAgentInput = z.infer<typeof CreateAgentSchema>;
@@ -108,7 +115,7 @@ export const RunStatusSchema = z.enum([
   "cancelled",
 ]);
 
-export const RunSourceSchema = z.enum(["schedule", "manual", "event"]);
+export const RunSourceSchema = z.enum(["schedule", "manual", "event", "routine", "system"]);
 
 export const CreateRunSchema = z.object({
   agentId: z.string().min(1),
@@ -180,6 +187,7 @@ export const CreateApprovalGateSchema = z.object({
   title: z.string().min(1).max(500),
   description: z.string().max(5000).optional().default(''),
   payload: z.record(z.unknown()).optional().default({}),
+  autoCreated: z.boolean().optional().default(false),
 });
 
 export const DecideApprovalGateSchema = z.object({

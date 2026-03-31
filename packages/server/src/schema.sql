@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS companies (
   status                TEXT NOT NULL DEFAULT 'active',
   budget_monthly_cents  INTEGER NOT NULL DEFAULT 0,
   spent_monthly_cents   INTEGER NOT NULL DEFAULT 0,
+  system_budget_cents   INTEGER NOT NULL DEFAULT 0,
   created_at            TEXT NOT NULL,
   updated_at            TEXT NOT NULL
 );
@@ -32,6 +33,8 @@ CREATE TABLE IF NOT EXISTS agents (
   tags                  TEXT NOT NULL DEFAULT '',
   budget_monthly_cents  INTEGER NOT NULL DEFAULT 0,
   spent_monthly_cents   INTEGER NOT NULL DEFAULT 0,
+  permission_mode       TEXT NOT NULL DEFAULT 'supervised',
+  system_prompt         TEXT NOT NULL DEFAULT '',
   created_at            TEXT NOT NULL,
   updated_at            TEXT NOT NULL
 );
@@ -177,10 +180,12 @@ CREATE TABLE IF NOT EXISTS approval_gates (
   title        TEXT NOT NULL,
   description  TEXT NOT NULL DEFAULT '',
   payload      TEXT NOT NULL DEFAULT '{}',
-  status       TEXT NOT NULL DEFAULT 'pending',
-  decided_at   TEXT,
-  decided_by   TEXT DEFAULT 'human',
-  created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+  status           TEXT NOT NULL DEFAULT 'pending',
+  decided_at       TEXT,
+  decided_by       TEXT DEFAULT 'human',
+  auto_created     INTEGER NOT NULL DEFAULT 0,
+  decision_reason  TEXT NOT NULL DEFAULT '',
+  created_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_gates_company ON approval_gates(company_id);
@@ -188,14 +193,27 @@ CREATE INDEX IF NOT EXISTS idx_gates_agent ON approval_gates(agent_id);
 CREATE INDEX IF NOT EXISTS idx_gates_status ON approval_gates(status);
 
 CREATE TABLE IF NOT EXISTS audit_log (
-  id         TEXT PRIMARY KEY,
-  company_id TEXT,
-  agent_id   TEXT,
-  action     TEXT NOT NULL,
-  detail     TEXT NOT NULL DEFAULT '{}',
-  actor      TEXT NOT NULL DEFAULT 'system',
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  id               TEXT PRIMARY KEY,
+  company_id       TEXT,
+  agent_id         TEXT,
+  action           TEXT NOT NULL,
+  detail           TEXT NOT NULL DEFAULT '{}',
+  actor            TEXT NOT NULL DEFAULT 'system',
+  decision_reason  TEXT NOT NULL DEFAULT '',
+  created_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_company ON audit_log(company_id);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS capsule_consolidation (
+  id                    TEXT PRIMARY KEY,
+  company_id            TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  last_consolidated_at  TEXT,
+  runs_since_last       INTEGER NOT NULL DEFAULT 0,
+  lock_holder           TEXT,
+  lock_acquired_at      TEXT,
+  status                TEXT NOT NULL DEFAULT 'idle',
+  created_at            TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_capsule_consolidation_company ON capsule_consolidation(company_id);
