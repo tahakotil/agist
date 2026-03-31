@@ -340,14 +340,14 @@ async function seed() {
   );
   console.log('[seed] Created 2 issues');
 
-  // ── Kotivon Company ──────────────────────────────────────────
-  const kotivonCompanyId = nanoid();
+  // ── Demo Agency Company ──────────────────────────────────────
+  const agencyCompanyId = nanoid();
   run(
     `INSERT INTO companies (id, name, description, status, budget_monthly_cents, spent_monthly_cents, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      kotivonCompanyId,
-      'Kotivon',
+      agencyCompanyId,
+      'Demo Agency',
       'Digital agency — web development, SEO, automation services',
       'active',
       100000, // $1000/mo
@@ -356,24 +356,24 @@ async function seed() {
       now.toISOString(),
     ]
   );
-  console.log(`[seed] Created company: Kotivon (${kotivonCompanyId})`);
+  console.log(`[seed] Created company: Demo Agency (${agencyCompanyId})`);
 
-  // ── kotivon-devops Agent ──────────────────────────────────────
-  const kotivonDevopsId = nanoid();
+  // ── devops-monitor Agent ──────────────────────────────────────
+  const devopsAgentId = nanoid();
   run(
     `INSERT INTO agents (id, company_id, name, role, title, model, capabilities, status, reports_to, adapter_type, adapter_config, budget_monthly_cents, spent_monthly_cents, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      kotivonDevopsId,
-      kotivonCompanyId,
-      'kotivon-devops',
+      devopsAgentId,
+      agencyCompanyId,
+      'devops-monitor',
       'specialist',
       'Production Monitor & DevOps Agent',
       'claude-haiku-4-5-20251001',
       '["ssl-monitoring", "health-checks", "deployment-status", "alert-management"]',
       'idle',
       null,
-      'claude_local',
+      'mock',
       '{}',
       0,
       0,
@@ -381,9 +381,9 @@ async function seed() {
       now.toISOString(),
     ]
   );
-  console.log(`[seed] Created agent: kotivon-devops (${kotivonDevopsId})`);
+  console.log(`[seed] Created agent: devops-monitor (${devopsAgentId})`);
 
-  // ── Kotivon Monitoring Routines ──────────────────────────────
+  // ── Monitoring Routines ──────────────────────────────
   const apiHealthRoutineId = nanoid();
   const sslMonitorRoutineId = nanoid();
   const deploymentStatusRoutineId = nanoid();
@@ -393,10 +393,10 @@ async function seed() {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       apiHealthRoutineId,
-      kotivonCompanyId,
-      kotivonDevopsId,
+      agencyCompanyId,
+      devopsAgentId,
       'API Health Check',
-      'Monitor client site API health — check endpoints, latency, errors',
+      'Monitor API health — check endpoints, latency, errors',
       '*/5 * * * *',
       'UTC',
       1,
@@ -412,10 +412,10 @@ async function seed() {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       sslMonitorRoutineId,
-      kotivonCompanyId,
-      kotivonDevopsId,
+      agencyCompanyId,
+      devopsAgentId,
       'SSL Certificate Monitoring',
-      'Check SSL certificate expiration dates for all client domains',
+      'Check SSL certificate expiration dates for all domains',
       '0 9 * * *',
       'UTC',
       1,
@@ -431,8 +431,8 @@ async function seed() {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       deploymentStatusRoutineId,
-      kotivonCompanyId,
-      kotivonDevopsId,
+      agencyCompanyId,
+      devopsAgentId,
       'Deployment Status Check',
       'Verify deployed services are running, check server resources, log health metrics',
       '*/15 * * * *',
@@ -444,15 +444,15 @@ async function seed() {
       now.toISOString(),
     ]
   );
-  console.log('[seed] Created 3 Kotivon monitoring routines: API Health, SSL Monitor, Deployment Status');
+  console.log('[seed] Created 3 monitoring routines: API Health, SSL Monitor, Deployment Status');
 
   // ── Save to disk ──────────────────────────────────────────
   saveDb();
   console.log('[seed] Database saved to disk.');
   console.log('[seed] Done! Seeded:');
-  console.log('  - 2 companies: Acme Corp, Kotivon');
-  console.log('  - 5 agents: Watchdog, Builder, Reviewer, Strategist, kotivon-devops');
-  console.log('  - 5 routines: Health Check, Morning Standup + 3 Kotivon monitoring');
+  console.log('  - 2 companies: Acme Corp, Demo Agency');
+  console.log('  - 5 agents: Watchdog, Builder, Reviewer, Strategist, devops-monitor');
+  console.log('  - 5 routines: Health Check, Morning Standup + 3 monitoring');
   console.log('  - 5 runs (3 Watchdog, 1 Builder, 1 Reviewer)');
   console.log('  - 2 issues');
   process.exit(0);
