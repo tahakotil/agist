@@ -2,6 +2,10 @@ import { createHmac } from 'crypto'
 import { all } from './db.js'
 import { logger } from './logger.js'
 
+// In-memory webhook enabled cache (invalidated every 30s)
+const webhookEnabledCache = new Map<string, { enabled: boolean; cachedAt: number }>()
+const WEBHOOK_CACHE_TTL = 30_000
+
 interface WebhookRow {
   id: string
   company_id: string
@@ -39,6 +43,21 @@ export async function dispatchWebhooks(
   }
 
   for (const webhook of rows) {
+    // Fast path: check in-memory enabled cache before processing
+    const cached = webhookEnabledCache.get(webhook.id)
+    const isEnabledCached = cached && Date.now() - cached.cachedAt < WEBHOOK_CACHE_TTL
+      ? cached.enabled
+      : null
+
+    if (isEnabledCached === false) {
+      continue
+    }
+
+    // Populate cache if not yet set (webhook was enabled=1 from SQL filter)
+    if (!isEnabledCached) {
+      webhookEnabledCache.set(webhook.id, { enabled: webhook.enabled === 1, cachedAt: Date.now() })
+    }
+
     const subscribedEvents = webhook.events === '*'
       ? ['*']
       : webhook.events.split(',').map((e) => e.trim()).filter(Boolean)

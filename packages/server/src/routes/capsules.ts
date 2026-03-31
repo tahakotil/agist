@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { get } from '../db.js';
+import { createHash } from 'node:crypto';
+import { get, run as dbRun } from '../db.js';
 import { requireRole } from '../middleware/rbac.js';
 import {
   listCapsules,
@@ -156,10 +157,26 @@ capsulesRouter.put(
     const id = c.req.param('id');
     const { content } = c.req.valid('json');
 
+    // Capsule write guard: skip if content is identical to existing
+    const existing = getCapsule(id);
+    if (!existing) {
+      return c.json({ error: 'Capsule not found' }, 404);
+    }
+
+    const newHash = createHash('sha256').update(content).digest('hex');
+    const existingHash = existing.contentHash || '';
+
+    if (newHash === existingHash) {
+      return c.json({ capsule: existing, unchanged: true });
+    }
+
     const updated = updateCapsuleContent(id, content);
     if (!updated) {
       return c.json({ error: 'Capsule not found' }, 404);
     }
+
+    // Mutual exclusion: mark this capsule as manually updated so auto-refresh is blocked
+    dbRun(`UPDATE capsules SET last_manual_update_at = datetime('now') WHERE id = ?`, [id]);
 
     return c.json({ capsule: updated });
   }
@@ -190,6 +207,18 @@ capsulesRouter.post('/api/capsules/:id/refresh', requireRole('admin'), async (c)
   const capsule = getCapsule(id);
   if (!capsule) {
     return c.json({ error: 'Capsule not found' }, 404);
+  }
+
+  // Mutual exclusion: block auto-refresh if a manual update happened in the last 5 minutes
+  if (capsule.lastManualUpdateAt) {
+    const lastManual = new Date(capsule.lastManualUpdateAt).getTime();
+    const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+    if (lastManual > fiveMinutesAgo) {
+      return c.json({
+        error: 'Capsule was manually updated recently, skipping auto-refresh',
+        lastManualUpdateAt: capsule.lastManualUpdateAt,
+      }, 409);
+    }
   }
 
   if (capsule.type === 'static') {

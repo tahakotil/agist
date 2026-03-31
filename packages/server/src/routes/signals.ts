@@ -90,6 +90,17 @@ signalsRouter.post(
       return c.json({ error: 'Source agent not found in this company' }, 404);
     }
 
+    // Signal dedup: reject same signal_type + source_agent_id + title within 1 hour
+    const duplicate = get<{ id: string }>(
+      `SELECT id FROM signals
+       WHERE company_id = ? AND source_agent_id = ? AND signal_type = ? AND title = ?
+       AND created_at > datetime('now', '-1 hour')`,
+      [companyId, body.source_agent_id, body.signal_type, body.title]
+    );
+    if (duplicate) {
+      return c.json({ error: 'Duplicate signal within cooldown period', existingId: duplicate.id }, 409);
+    }
+
     const id = nanoid();
     const payloadStr = JSON.stringify(body.payload ?? {});
 

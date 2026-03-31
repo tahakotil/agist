@@ -5,6 +5,30 @@ import { spawnClaudeLocal, checkAgentBudget } from './adapter.js';
 import { logger } from './logger.js';
 import { generateDigest } from './digest/generate-digest.js';
 
+// ── Budget Cache (Gate Ordering: Cheapest-First) ─────────────────────────────
+
+// In-memory budget cache (invalidated every 60s)
+const budgetCache = new Map<string, { remainingCents: number; cachedAt: number }>();
+const BUDGET_CACHE_TTL = 60_000; // 1 minute
+
+function getCachedBudget(agentId: string): number | null {
+  const cached = budgetCache.get(agentId);
+  if (cached && Date.now() - cached.cachedAt < BUDGET_CACHE_TTL) {
+    return cached.remainingCents;
+  }
+  return null;
+}
+
+function setCachedBudget(agentId: string, remainingCents: number): void {
+  budgetCache.set(agentId, { remainingCents, cachedAt: Date.now() });
+}
+
+// ── Digest Mutex ──────────────────────────────────────────────────────────────
+
+let digestGenerationInProgress = false;
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 interface RoutineRow {
   id: string;
   company_id: string;
@@ -70,9 +94,20 @@ async function processDueRoutines(): Promise<void> {
     // Don't pile on if agent is already running, paused, or over budget
     if (agent.status === 'running' || agent.status === 'paused' || agent.status === 'budget_exceeded') continue;
 
-    // Check budget before spawning
+    // Cheapest gate first: check in-memory cache before DB query
+    const cachedBudget = getCachedBudget(routine.agent_id);
+    if (cachedBudget !== null && cachedBudget <= 0) {
+      logger.debug('Scheduler: skipping routine — cached budget exceeded', {
+        routineId: routine.id,
+        agentId: routine.agent_id,
+      });
+      continue;
+    }
+
+    // Expensive gate: full DB budget check
     const budgetError = checkAgentBudget(routine.agent_id);
     if (budgetError) {
+      setCachedBudget(routine.agent_id, 0); // Cache the negative result
       logger.warn('Scheduler: skipping routine — agent over budget', {
         routineId: routine.id,
         agentId: routine.agent_id,
@@ -80,6 +115,8 @@ async function processDueRoutines(): Promise<void> {
       });
       continue;
     }
+    // Cache positive result (non-zero = has budget)
+    setCachedBudget(routine.agent_id, 1);
 
     const runId = nanoid();
     const createdAt = new Date().toISOString();
@@ -126,6 +163,12 @@ async function processDueRoutines(): Promise<void> {
  * Fires at 23:00 UTC daily. Idempotent — skips if digest already exists.
  */
 async function processDailyDigests(): Promise<void> {
+  // Mutual exclusion: prevent concurrent digest generation
+  if (digestGenerationInProgress) {
+    logger.debug('Scheduler: digest generation already in progress, skipping');
+    return;
+  }
+
   const now = new Date();
   const hour = now.getUTCHours();
   const minute = now.getUTCMinutes();
@@ -133,42 +176,47 @@ async function processDailyDigests(): Promise<void> {
   // Only run between 23:00–23:29 UTC
   if (hour !== 23 || minute >= 30) return;
 
-  const today = now.toISOString().slice(0, 10);
+  digestGenerationInProgress = true;
+  try {
+    const today = now.toISOString().slice(0, 10);
 
-  interface CompanyRow {
-    id: string;
-    name: string;
-  }
+    interface CompanyRow {
+      id: string;
+      name: string;
+    }
 
-  const companies = all<CompanyRow>(
-    `SELECT id, name FROM companies WHERE status = 'active'`
-  );
-
-  for (const company of companies) {
-    // Check if digest already exists for today (idempotent)
-    const existing = get(
-      `SELECT id FROM digests WHERE company_id = ? AND date = ?`,
-      [company.id, today]
+    const companies = all<CompanyRow>(
+      `SELECT id, name FROM companies WHERE status = 'active'`
     );
 
-    if (existing) {
-      logger.debug('Scheduler: daily digest already exists, skipping', {
-        companyId: company.id,
-        date: today,
-      });
-      continue;
-    }
+    for (const company of companies) {
+      // Check if digest already exists for today (idempotent)
+      const existing = get(
+        `SELECT id FROM digests WHERE company_id = ? AND date = ?`,
+        [company.id, today]
+      );
 
-    try {
-      await generateDigest(company.id, today);
-      logger.info('Scheduler: daily digest generated', { companyId: company.id, date: today });
-    } catch (err: unknown) {
-      logger.error('Scheduler: daily digest generation failed', {
-        companyId: company.id,
-        date: today,
-        error: String(err),
-      });
+      if (existing) {
+        logger.debug('Scheduler: daily digest already exists, skipping', {
+          companyId: company.id,
+          date: today,
+        });
+        continue;
+      }
+
+      try {
+        await generateDigest(company.id, today);
+        logger.info('Scheduler: daily digest generated', { companyId: company.id, date: today });
+      } catch (err: unknown) {
+        logger.error('Scheduler: daily digest generation failed', {
+          companyId: company.id,
+          date: today,
+          error: String(err),
+        });
+      }
     }
+  } finally {
+    digestGenerationInProgress = false;
   }
 }
 

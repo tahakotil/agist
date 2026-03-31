@@ -50,6 +50,17 @@ outputsRouter.post(
       return c.json({ error: 'Run not found' }, 404);
     }
 
+    // Quality gate: reject outputs with confidence below threshold
+    const data = body.data as Record<string, unknown>;
+    const confidence = typeof data.confidence === 'number' ? data.confidence : 1;
+    if (confidence < 0.5) {
+      return c.json({
+        error: 'Output confidence too low for persistence',
+        confidence,
+        threshold: 0.5,
+      }, 422);
+    }
+
     const id = nanoid();
     const now = new Date().toISOString();
     const dataStr = JSON.stringify(body.data);
