@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "concurrently -n api,web -c blue,green \"cd packages/server && npx tsx src/index.ts\" \"cd packages/web && npx next dev -p 3003\"",
+    "dev": "concurrently -n api,web -c blue,green \"cd packages/server && pnpm exec tsx src/index.ts\" \"cd packages/web && pnpm exec next dev -p 3003\"",
     "build": "pnpm -r build",
     "start": "node packages/server/dist/index.js",
     "seed": "pnpm --filter @agist/server exec tsx src/seed.ts",

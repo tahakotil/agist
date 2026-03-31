@@ -8,7 +8,7 @@ import { generateApiKey } from './auth.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const DATA_DIR = join(homedir(), '.agist');
+const DATA_DIR = process.env.AGIST_DATA_DIR || join(homedir(), '.agist');
 const DB_PATH = join(DATA_DIR, 'data.db');
 
 mkdirSync(DATA_DIR, { recursive: true });

@@ -2,12 +2,27 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { serve } from '@hono/node-server';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import type { IncomingMessage } from 'http';
 import type { Duplex } from 'stream';
 import { ZodError } from 'zod';
+
+// Load .env.development if present (for port/DB separation in dev)
+const __filename_env = fileURLToPath(import.meta.url);
+const envPath = join(dirname(__filename_env), '..', '..', '..', '.env.development');
+if (existsSync(envPath)) {
+  for (const line of readFileSync(envPath, 'utf8').split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq < 0) continue;
+    const key = trimmed.slice(0, eq).trim();
+    const val = trimmed.slice(eq + 1).trim();
+    if (!process.env[key]) process.env[key] = val;
+  }
+}
 
 import { logger } from './logger.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
