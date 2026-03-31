@@ -44,7 +44,7 @@ ${ctx.routineTitle ? `## Current Routine: ${ctx.routineTitle}\n${ctx.routineDesc
   return base
 }
 
-interface StreamJsonChunk {
+export interface StreamJsonChunk {
   type?: string
   usage?: {
     input_tokens?: number
