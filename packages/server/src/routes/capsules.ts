@@ -58,6 +58,9 @@ function requireCompany(cid: string) {
 // GET /api/companies/:cid/capsules
 capsulesRouter.get('/api/companies/:cid/capsules', (c) => {
   const cid = c.req.param('cid');
+  if (!cid) {
+    return c.json({ error: 'Company ID required' }, 400);
+  }
 
   if (!requireCompany(cid)) {
     return c.json({ error: 'Company not found' }, 404);
@@ -73,6 +76,9 @@ capsulesRouter.post(
   requireRole('admin'),
   async (c) => {
     const cid = c.req.param('cid');
+    if (!cid) {
+      return c.json({ error: 'Company ID required' }, 400);
+    }
 
     // Parse and validate body manually so we can access the raw config field
     // before Zod's union strips unknown keys (e.g. composite.includes).
@@ -162,6 +168,9 @@ capsulesRouter.put(
 // DELETE /api/capsules/:id
 capsulesRouter.delete('/api/capsules/:id', requireRole('admin'), (c) => {
   const id = c.req.param('id');
+  if (!id) {
+    return c.json({ error: 'Capsule ID required' }, 400);
+  }
 
   const deleted = deleteCapsule(id);
   if (!deleted) {
@@ -174,6 +183,9 @@ capsulesRouter.delete('/api/capsules/:id', requireRole('admin'), (c) => {
 // POST /api/capsules/:id/refresh — manually refresh dynamic or composite capsule
 capsulesRouter.post('/api/capsules/:id/refresh', requireRole('admin'), async (c) => {
   const id = c.req.param('id');
+  if (!id) {
+    return c.json({ error: 'Capsule ID required' }, 400);
+  }
 
   const capsule = getCapsule(id);
   if (!capsule) {

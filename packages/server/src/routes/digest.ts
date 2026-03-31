@@ -61,6 +61,9 @@ function isValidDate(s: string): boolean {
 // GET /api/companies/:cid/digest — today's digest or the latest available
 digestRouter.get('/api/companies/:cid/digest', async (c) => {
   const cid = c.req.param('cid');
+  if (!cid) {
+    return c.json({ error: 'Company ID required' }, 400);
+  }
 
   const company = get(`SELECT id FROM companies WHERE id = ?`, [cid]);
   if (!company) {
@@ -95,6 +98,9 @@ digestRouter.get('/api/companies/:cid/digest', async (c) => {
 // GET /api/companies/:cid/digest/range — date range
 digestRouter.get('/api/companies/:cid/digest/range', async (c) => {
   const cid = c.req.param('cid');
+  if (!cid) {
+    return c.json({ error: 'Company ID required' }, 400);
+  }
   const from = c.req.query('from');
   const to = c.req.query('to') ?? new Date().toISOString().slice(0, 10);
 
@@ -118,6 +124,9 @@ digestRouter.get('/api/companies/:cid/digest/range', async (c) => {
 // GET /api/companies/:cid/digest/:date — specific date
 digestRouter.get('/api/companies/:cid/digest/:date', async (c) => {
   const cid = c.req.param('cid');
+  if (!cid) {
+    return c.json({ error: 'Company ID required' }, 400);
+  }
   const date = c.req.param('date');
 
   if (!isValidDate(date)) {
@@ -147,6 +156,9 @@ digestRouter.post(
   requireRole('admin'),
   async (c) => {
     const cid = c.req.param('cid');
+    if (!cid) {
+      return c.json({ error: 'Company ID required' }, 400);
+    }
 
     const company = get(`SELECT id FROM companies WHERE id = ?`, [cid]);
     if (!company) {

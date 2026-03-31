@@ -958,7 +958,7 @@ export async function spawnClaudeLocal(
           const rawOutput = plainTextLines.join('\n');
           const context = `${agentRow.name} (runId: ${runId})`;
 
-          const result = await parseStructuredOutput(rawOutput, schema as Parameters<typeof parseStructuredOutput>[1], context);
+          const result = await parseStructuredOutput(rawOutput, schema as unknown as Parameters<typeof parseStructuredOutput>[1], context);
 
           run(
             `UPDATE runs SET output_raw = ?, output_structured = ?, output_summary = ?, output_confidence = ? WHERE id = ?`,
