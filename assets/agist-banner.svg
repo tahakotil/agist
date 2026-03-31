@@ -44,5 +44,5 @@
   <text x="770" y="481" text-anchor="middle" font-family="monospace" font-size="13" fill="#10B981">Zero Config</text>
 
   <!-- Subtle copyright -->
-  <text x="640" y="600" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#475569">Open Source  |  MIT License  |  kotivon.com</text>
+  <text x="640" y="600" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#475569">Open Source  |  MIT License  |  github.com/tahakotil/agist</text>
 </svg>
