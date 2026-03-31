@@ -7,6 +7,47 @@ import { requireRole } from '../middleware/rbac.js';
 import { getPaginationParams, paginatedResponse } from '../utils/pagination.js';
 import { audit } from '../audit.js';
 
+/**
+ * Auto-create an approval gate based on agent permission mode and action type.
+ * Returns the gate ID if created, null if not needed.
+ *
+ * Only creates a gate when:
+ * 1. The agent is in 'supervised' permission mode
+ * 2. The action is considered destructive (deploy, delete, budget_change)
+ */
+export function autoCreateGate(
+  companyId: string,
+  agentId: string,
+  agentName: string,
+  action: string,
+  description: string
+): string | null {
+  // Check if agent is in supervised mode (column may not exist yet on older DBs)
+  const agent = get<{ permission_mode: string | null }>(
+    `SELECT permission_mode FROM agents WHERE id = ?`,
+    [agentId]
+  );
+
+  if (!agent) return null;
+
+  // Default to 'supervised' if column is absent (null)
+  const mode = agent.permission_mode ?? 'supervised';
+  if (mode !== 'supervised') return null;
+
+  const destructiveActions = ['deploy', 'delete', 'budget_change'];
+  if (!destructiveActions.includes(action)) return null;
+
+  const gateId = nanoid();
+  const now = new Date().toISOString();
+  run(
+    `INSERT INTO approval_gates (id, company_id, agent_id, gate_type, title, description, payload, status, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, '{}', 'pending', ?)`,
+    [gateId, companyId, agentId, action, `Auto-gate: ${agentName} — ${action}`, description, now]
+  );
+
+  return gateId;
+}
+
 const CreateApprovalGateSchema = z.object({
   agentId: z.string().min(1),
   gateType: z.string().min(1).max(100),

@@ -11,8 +11,31 @@ import { requireRole } from '../middleware/rbac.js';
 import { slugify } from '../workspace.js';
 import { audit } from '../audit.js';
 import { validateOutputSchema } from '../parser/parse-output.js';
+import { checkAgentPermission } from '../middleware/agent-permissions.js';
 
 export const agentsRouter = new Hono();
+
+/**
+ * Attempt to add v1.8 schema columns (permission_mode, system_prompt) to the
+ * agents table. Called on first use rather than at import time so the DB is
+ * guaranteed to be initialized.
+ * Uses try/catch matching the pattern in db.ts — safe to call multiple times.
+ */
+let schemaV18Migrated = false;
+function ensureV18Schema(): void {
+  if (schemaV18Migrated) return;
+  schemaV18Migrated = true;
+  try {
+    run("ALTER TABLE agents ADD COLUMN permission_mode TEXT NOT NULL DEFAULT 'supervised'");
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    run('ALTER TABLE agents ADD COLUMN system_prompt TEXT');
+  } catch {
+    // Column already exists — ignore
+  }
+}
 
 const createSchema = z.object({
   name: z.string().min(1).max(200),
@@ -32,6 +55,16 @@ const createSchema = z.object({
     .default('idle'),
   /** Optional structured output schema for this agent's runs */
   outputSchema: z.record(z.unknown()).nullable().optional(),
+  /**
+   * Permission mode for the agent (Claude Code layered trust model):
+   * - autonomous: no gates, all actions permitted
+   * - supervised (default): destructive actions require approval gate
+   * - readonly: agent can only perform read/wake operations
+   * - custom: per-agent capability list governs allowed actions
+   */
+  permissionMode: z.enum(['autonomous', 'supervised', 'readonly', 'custom']).default('supervised'),
+  /** Optional system prompt prepended to every agent run */
+  systemPrompt: z.string().max(50_000).nullable().optional(),
 });
 
 const updateSchema = createSchema.partial();
@@ -58,6 +91,10 @@ interface AgentRow {
   spent_monthly_cents: number;
   created_at: string;
   updated_at: string;
+  /** Permission mode — may be null on older DB rows; defaults to 'supervised' */
+  permission_mode: string | null;
+  /** Optional system prompt prepended to every agent run */
+  system_prompt: string | null;
 }
 
 function rowToAgent(row: AgentRow) {
@@ -103,6 +140,8 @@ function rowToAgent(row: AgentRow) {
     spentMonthlyCents: row.spent_monthly_cents,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    permissionMode: (row.permission_mode ?? 'supervised') as 'autonomous' | 'supervised' | 'readonly' | 'custom',
+    systemPrompt: row.system_prompt ?? null,
   };
 }
 
@@ -160,6 +199,7 @@ function buildAgentWhere(params: {
 
 // GET /api/agents — list ALL agents across all companies with company name
 agentsRouter.get('/api/agents', (c) => {
+  ensureV18Schema();
   const { page, limit, offset } = getPaginationParams(c);
   const status = c.req.query('status');
   const model = c.req.query('model');
@@ -301,8 +341,8 @@ agentsRouter.post(
     run(
       `INSERT INTO agents (id, company_id, name, slug, role, title, model, capabilities, status,
        reports_to, adapter_type, adapter_config, working_directory, project_id, tags,
-       output_schema, budget_monthly_cents, spent_monthly_cents, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+       output_schema, budget_monthly_cents, spent_monthly_cents, permission_mode, system_prompt, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
       [
         id,
         companyId,
@@ -321,6 +361,8 @@ agentsRouter.post(
         body.tags.join(','),
         body.outputSchema != null ? JSON.stringify(body.outputSchema) : null,
         body.budgetMonthlyCents,
+        body.permissionMode,
+        body.systemPrompt ?? null,
         now,
         now,
       ]
@@ -549,6 +591,14 @@ agentsRouter.patch('/api/agents/:id', requireRole('admin'), zValidator('json', u
     fields.push('output_schema = ?');
     values.push(body.outputSchema != null ? JSON.stringify(body.outputSchema) : null);
   }
+  if (body.permissionMode !== undefined) {
+    fields.push('permission_mode = ?');
+    values.push(body.permissionMode);
+  }
+  if ('systemPrompt' in body) {
+    fields.push('system_prompt = ?');
+    values.push(body.systemPrompt ?? null);
+  }
 
   if (fields.length === 0) {
     return c.json({ agent: rowToAgent(existing) });
@@ -605,6 +655,12 @@ const MAX_CHAIN_DEPTH = 5;
 agentsRouter.post('/api/agents/:id/wake', requireRole('admin'), async (c) => {
   const id = c.req.param('id') ?? '';
 
+  // Permission check (gate 1+2: status + permission_mode)
+  const permCheck = checkAgentPermission(id, 'wake');
+  if (!permCheck.allowed) {
+    return c.json({ error: permCheck.reason }, 403);
+  }
+
   const agent = get<AgentRow>(`SELECT * FROM agents WHERE id = ?`, [id]);
 
   if (!agent) {
@@ -613,6 +669,27 @@ agentsRouter.post('/api/agents/:id/wake', requireRole('admin'), async (c) => {
 
   if (agent.status === 'running') {
     return c.json({ error: 'Agent is already running' }, 409);
+  }
+
+  // If permission check says gate is required (supervised mode + destructive action),
+  // create an approval gate and return 202 pending.
+  if (permCheck.requiresGate) {
+    const gateId = nanoid();
+    const now = new Date().toISOString();
+    run(
+      `INSERT INTO approval_gates (id, company_id, agent_id, gate_type, title, description, payload, status, created_at)
+       VALUES (?, ?, ?, 'wake', ?, ?, '{}', 'pending', ?)`,
+      [
+        gateId,
+        agent.company_id,
+        id,
+        `Agent wake requires approval`,
+        `Supervised agent "${agent.name}" wake requested`,
+        now,
+      ]
+    );
+    audit(agent.company_id, id, 'gate.auto_created', { gateId, gateType: 'wake', reason: permCheck.reason });
+    return c.json({ error: 'Approval required', gateId, status: 'pending' }, 202);
   }
 
   // Budget check: reject if agent has exceeded monthly budget
