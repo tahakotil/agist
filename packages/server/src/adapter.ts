@@ -14,6 +14,7 @@ import { sendSlackNotification } from './integrations/slack.js';
 import { createGitHubIssue } from './integrations/github.js';
 import { getAdapter, getDefaultAdapter } from './adapters/index.js';
 import { estimateCostCents } from './adapters/cost.js';
+import type { StreamJsonChunk } from './adapters/claude-cli.js';
 import { parseAgentOutputs } from './output-parser.js';
 import { parseStructuredOutput } from './parser/parse-output.js';
 import { ensureWorkspace, slugify } from './workspace.js';
