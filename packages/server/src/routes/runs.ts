@@ -93,6 +93,8 @@ function buildRunWhere(params: {
   source?: string;
   from?: string;
   to?: string;
+  /** When false (default), excludes runs with source='system' */
+  includeSystem?: boolean;
 }): { where: string; queryParams: unknown[] } {
   const clauses: string[] = [];
   const queryParams: unknown[] = [];
@@ -108,6 +110,9 @@ function buildRunWhere(params: {
   if (params.source) {
     clauses.push('r.source = ?');
     queryParams.push(params.source);
+  } else if (!params.includeSystem) {
+    // Hide system runs by default unless explicitly included or a specific source is requested
+    clauses.push(`r.source != 'system'`);
   }
   if (params.from) {
     clauses.push('r.started_at >= ?');
@@ -132,8 +137,40 @@ runsRouter.get('/api/runs', (c) => {
   const to = c.req.query('to');
   const sortParam = c.req.query('sort') ?? 'startedAt';
   const sortCol = VALID_RUN_SORT[sortParam] ?? 'r.created_at';
+  // By default, hide system runs (source='system') to keep the list focused on agent runs.
+  // Pass ?include_system=true to include them.
+  const includeSystem = c.req.query('include_system') === 'true';
 
-  const { where, queryParams } = buildRunWhere({ agentId, status, source, from, to });
+  const { where, queryParams } = buildRunWhere({ agentId, status, source, from, to, includeSystem });
+
+  const countRow = get<{ total: number }>(
+    `SELECT COUNT(*) as total ${RUN_BASE_SQL} ${where}`,
+    queryParams
+  );
+  const total = countRow?.total ?? 0;
+
+  const rows = all<RunRow>(
+    `${RUN_SELECT_SQL} ${RUN_BASE_SQL} ${where} ORDER BY ${sortCol} DESC LIMIT ? OFFSET ?`,
+    [...queryParams, limit, offset]
+  );
+
+  const { pagination } = paginatedResponse(rows, total, page, limit);
+
+  return c.json({ runs: rows.map(rowToRun), pagination });
+});
+
+// GET /api/runs/system — list system runs only (source='system')
+runsRouter.get('/api/runs/system', (c) => {
+  const { page, limit, offset } = getPaginationParams(c);
+  const status = c.req.query('status');
+  const agentId = c.req.query('agentId');
+  const from = c.req.query('from');
+  const to = c.req.query('to');
+  const sortParam = c.req.query('sort') ?? 'startedAt';
+  const sortCol = VALID_RUN_SORT[sortParam] ?? 'r.created_at';
+
+  // Force source='system' filter
+  const { where, queryParams } = buildRunWhere({ agentId, status, source: 'system', from, to, includeSystem: true });
 
   const countRow = get<{ total: number }>(
     `SELECT COUNT(*) as total ${RUN_BASE_SQL} ${where}`,
@@ -198,8 +235,9 @@ runsRouter.get('/api/agents/:agentId/runs', (c) => {
   const to = c.req.query('to');
   const sortParam = c.req.query('sort') ?? 'startedAt';
   const sortCol = VALID_RUN_SORT[sortParam] ?? 'r.created_at';
+  const includeSystem = c.req.query('include_system') === 'true';
 
-  const { where, queryParams } = buildRunWhere({ agentId, status, source, from, to });
+  const { where, queryParams } = buildRunWhere({ agentId, status, source, from, to, includeSystem });
 
   const countRow = get<{ total: number }>(
     `SELECT COUNT(*) as total ${RUN_BASE_SQL} ${where}`,
