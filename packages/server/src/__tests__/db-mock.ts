@@ -114,6 +114,31 @@ export async function createTestDb(): Promise<Database> {
     )`,
     "CREATE INDEX IF NOT EXISTS idx_digests_company ON digests(company_id)",
     "CREATE INDEX IF NOT EXISTS idx_digests_date ON digests(date)",
+    // v1.8: Claude Code patterns — capsule extensions
+    "ALTER TABLE capsules ADD COLUMN priority TEXT NOT NULL DEFAULT 'memory'",
+    "ALTER TABLE capsules ADD COLUMN content_hash TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE capsules ADD COLUMN last_manual_update_at TEXT",
+    // v1.8: approval gate extensions
+    "ALTER TABLE approval_gates ADD COLUMN auto_created INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE approval_gates ADD COLUMN decision_reason TEXT NOT NULL DEFAULT ''",
+    // v1.8: audit log extension
+    "ALTER TABLE audit_log ADD COLUMN decision_reason TEXT NOT NULL DEFAULT ''",
+    // v1.8: digest extensions
+    "ALTER TABLE digests ADD COLUMN quality_score REAL NOT NULL DEFAULT 0",
+    "ALTER TABLE digests ADD COLUMN compacted INTEGER NOT NULL DEFAULT 0",
+    // v1.8: company system budget
+    "ALTER TABLE companies ADD COLUMN system_budget_cents INTEGER NOT NULL DEFAULT 0",
+    // v1.8: capsule consolidation table
+    `CREATE TABLE IF NOT EXISTS capsule_consolidation (
+      id                    TEXT PRIMARY KEY,
+      company_id            TEXT NOT NULL,
+      last_consolidated_at  TEXT,
+      runs_since_last       INTEGER NOT NULL DEFAULT 0,
+      lock_holder           TEXT,
+      lock_acquired_at      TEXT,
+      status                TEXT NOT NULL DEFAULT 'idle',
+      created_at            TEXT NOT NULL DEFAULT (datetime('now'))
+    )`,
   ]
   for (const sql of migrations) {
     try { db.run(sql) } catch { /* column or table already exists */ }

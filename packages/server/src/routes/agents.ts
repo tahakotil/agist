@@ -362,7 +362,7 @@ agentsRouter.post(
         body.outputSchema != null ? JSON.stringify(body.outputSchema) : null,
         body.budgetMonthlyCents,
         body.permissionMode,
-        body.systemPrompt ?? null,
+        body.systemPrompt ?? '',
         now,
         now,
       ]
@@ -655,16 +655,16 @@ const MAX_CHAIN_DEPTH = 5;
 agentsRouter.post('/api/agents/:id/wake', requireRole('admin'), async (c) => {
   const id = c.req.param('id') ?? '';
 
-  // Permission check (gate 1+2: status + permission_mode)
-  const permCheck = checkAgentPermission(id, 'wake');
-  if (!permCheck.allowed) {
-    return c.json({ error: permCheck.reason }, 403);
-  }
-
   const agent = get<AgentRow>(`SELECT * FROM agents WHERE id = ?`, [id]);
 
   if (!agent) {
     return c.json({ error: 'Agent not found' }, 404);
+  }
+
+  // Permission check (gate 1+2: status + permission_mode) — after 404 check
+  const permCheck = checkAgentPermission(id, 'wake');
+  if (!permCheck.allowed) {
+    return c.json({ error: permCheck.reason }, 403);
   }
 
   if (agent.status === 'running') {

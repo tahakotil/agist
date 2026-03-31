@@ -48,6 +48,16 @@ export async function createTestDb(): Promise<Database> {
     "ALTER TABLE runs ADD COLUMN output_confidence REAL",
     // chain_depth for runs (wake chain support)
     "ALTER TABLE runs ADD COLUMN chain_depth INTEGER NOT NULL DEFAULT 0",
+    // v1.8: Claude Code patterns — agent permission extensions
+    "ALTER TABLE agents ADD COLUMN permission_mode TEXT NOT NULL DEFAULT 'supervised'",
+    "ALTER TABLE agents ADD COLUMN system_prompt TEXT NOT NULL DEFAULT ''",
+    // v1.8: company system budget
+    "ALTER TABLE companies ADD COLUMN system_budget_cents INTEGER NOT NULL DEFAULT 0",
+    // v1.8: approval gate extensions
+    "ALTER TABLE approval_gates ADD COLUMN auto_created INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE approval_gates ADD COLUMN decision_reason TEXT NOT NULL DEFAULT ''",
+    // v1.8: audit log extension
+    "ALTER TABLE audit_log ADD COLUMN decision_reason TEXT NOT NULL DEFAULT ''",
   ]
   for (const sql of migrations) {
     try { db.run(sql) } catch { /* column already exists */ }

@@ -28,6 +28,9 @@ export interface CapsuleRow {
   created_at: string;
   updated_at: string;
   expires_at: string | null;
+  priority?: string;
+  content_hash?: string;
+  last_manual_update_at?: string | null;
 }
 
 export interface CapsuleVersionRow {
@@ -74,6 +77,9 @@ export interface Capsule {
   updatedAt: string;
   expiresAt: string | null;
   isStale: boolean;
+  priority: string;
+  contentHash: string;
+  lastManualUpdateAt: string | null;
 }
 
 export interface CapsuleVersion {
@@ -117,6 +123,9 @@ export function rowToCapsule(row: CapsuleRow): Capsule {
     updatedAt: row.updated_at,
     expiresAt: row.expires_at ?? null,
     isStale,
+    priority: row.priority ?? 'memory',
+    contentHash: row.content_hash ?? '',
+    lastManualUpdateAt: row.last_manual_update_at ?? null,
   };
 }
 
