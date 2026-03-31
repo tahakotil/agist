@@ -736,9 +736,9 @@ Assign each agent the right model for the job:
 - [x] Budget tracking + auto-pause
 - [x] Approval gates
 - [x] Dashboard (overview, agents, runs, approvals)
-- [ ] Structured output parsing with schema validation
-- [ ] Context capsules (static, dynamic, composite)
-- [ ] Daily digest generation
+- [x] Structured output parsing with schema validation
+- [x] Context capsules (static, dynamic, composite)
+- [x] Daily digest generation
 
 ### Phase 2
 - [ ] Visual workflow builder (drag & drop)
