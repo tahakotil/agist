@@ -66,19 +66,17 @@ export default function ProjectsPage() {
   const [selectedCompanyId, setSelectedCompanyId] = useState("")
   const [creating, setCreating] = useState(false)
 
-  const { data: companies } = useQuery({
+  const { data: companiesData } = useQuery({
     queryKey: ["companies"],
-    queryFn: async () => {
-      const res = await getCompanies()
-      return res.companies
-    },
+    queryFn: () => getCompanies({ limit: 100 }),
   })
+  const companies: Company[] = companiesData?.companies ?? []
 
   // Fetch projects for all companies
   const { data: projectsByCompany, isLoading } = useQuery({
-    queryKey: ["all-projects", Array.isArray(companies) ? companies.map((c: Company) => c.id) : []],
+    queryKey: ["all-projects", companies.map((c: Company) => c.id)],
     queryFn: async () => {
-      if (!companies || companies.length === 0) return []
+      if (companies.length === 0) return []
       const results = await Promise.all(
         companies.map(async (company: Company) => {
           const res = await getCompanyProjects(company.id)
@@ -87,7 +85,7 @@ export default function ProjectsPage() {
       )
       return results.flat()
     },
-    enabled: !!companies && companies.length > 0,
+    enabled: companies.length > 0,
   })
 
   async function handleCreate(e: React.FormEvent) {
