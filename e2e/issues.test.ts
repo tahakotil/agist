@@ -11,7 +11,7 @@ test.describe('Issues', () => {
   test('issues page shows table headers', async ({ page }) => {
     await page.goto('/issues')
     await expect(page.getByRole('columnheader', { name: /issue/i })).toBeVisible()
-    await expect(page.getByRole('columnheader', { name: /severity/i })).toBeVisible()
+    await expect(page.getByRole('columnheader', { name: /priority/i })).toBeVisible()
     await expect(page.getByRole('columnheader', { name: /status/i })).toBeVisible()
   })
 

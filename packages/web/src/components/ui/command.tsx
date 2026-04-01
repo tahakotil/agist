@@ -60,7 +60,7 @@ function CommandDialog({
         )}
         showCloseButton={showCloseButton}
       >
-        {children}
+        <CommandPrimitive>{children}</CommandPrimitive>
       </DialogContent>
     </Dialog>
   )
