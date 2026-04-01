@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://github.com/tahakotil/agist#readme
+    about: Check the README and docs before opening an issue
+  - name: Discussions
+    url: https://github.com/tahakotil/agist/discussions
+    about: Ask questions and share ideas
